@@ -17,40 +17,42 @@ import matplotlib.patches
 import os
 import sys
 
-if False:
-    plt.style.use('seaborn')
-    Y2020_COLOR_OFFSET = 1
-elif False:
-    plt.style.use('ggplot')
-    Y2020_COLOR_OFFSET = 0
-else:
-    plt.style.use('bmh')
-    Y2020_COLOR_OFFSET = 0
+def init_latex():
+    global Y2020_COLOR_OFFSET
+    if False:
+        plt.style.use('seaborn')
+        Y2020_COLOR_OFFSET = 1
+    elif False:
+        plt.style.use('ggplot')
+        Y2020_COLOR_OFFSET = 0
+    else:
+        plt.style.use('bmh')
+        Y2020_COLOR_OFFSET = 0
 
-# Documentation:
-# https://matplotlib.org/stable/tutorials/introductory/customizing.html#the-default-matplotlibrc-file
-plt.rcParams.update({
-    "text.usetex": False, # True if platform.system() != "Windows" else False,
-    #"text.latex.preamble": [
-    #    r"\usepackage{graphics}",
-    #    r"\usepackage{tgtermes}",
-    #],
-    # "font.family": "tgtermes" if platform.system() != "Windows" else "Times New Roman",
-    "font.family": "Times New Roman",
-    "font.serif": ["Times New Roman"],
-    "mathtext.fontset": "cm",
-    "mathtext.rm": "serif",
-    #"mathtext.fallback": "cm",
-    # Use 10pt font in plots, to match 10pt font in document
-    "axes.labelsize": 9,
-    "font.size": 9,
-    # Make the legend/label fonts a little smaller
-    "legend.fontsize": 7,
-    "xtick.labelsize": 7,
-    "ytick.labelsize": 7,
-    "grid.linewidth": 0.3,
-    "grid.alpha": 1.0,
-})
+    # Documentation:
+    # https://matplotlib.org/stable/tutorials/introductory/customizing.html#the-default-matplotlibrc-file
+    plt.rcParams.update({
+        "text.usetex": False, # True if platform.system() != "Windows" else False,
+        #"text.latex.preamble": [
+        #    r"\usepackage{graphics}",
+        #    r"\usepackage{tgtermes}",
+        #],
+        # "font.family": "tgtermes" if platform.system() != "Windows" else "Times New Roman",
+        "font.family": "Times New Roman",
+        "font.serif": ["Times New Roman"],
+        "mathtext.fontset": "cm",
+        "mathtext.rm": "serif",
+        #"mathtext.fallback": "cm",
+        # Use 10pt font in plots, to match 10pt font in document
+        "axes.labelsize": 9,
+        "font.size": 9,
+        # Make the legend/label fonts a little smaller
+        "legend.fontsize": 7,
+        "xtick.labelsize": 7,
+        "ytick.labelsize": 7,
+        "grid.linewidth": 0.3,
+        "grid.alpha": 1.0,
+    })
 
 # how to embed Matplitlib in Latex:
 # https://jwalton.info/Embed-Publication-Matplotlib-Latex/
@@ -78,6 +80,9 @@ ACM_CUSTOM_YLIM = (850, 1300)
 ESTIMATION_PAST_YEARS=10
 BASELINE_PLOT_START_DATE = BASELINE_START_DATE
 BASELINE_PLOT_END_DATE = datetime.date(2022, 12, 31)
+
+def get_date_from_isoweek(year, week):
+    return isoweek.Week(year, week).thursday()
 
 def set_size(width, fraction=1, subplots=(1, 1), height_in_override=None):
     """Set figure dimensions to avoid scaling in LaTeX.
@@ -240,7 +245,7 @@ def parse_finland_acm_csv(csv_file, trim_weeks_from_end):
         deaths = int(cells[2])
         male_deaths = int(cells[3])
         female_deaths = int(cells[4])
-        begin_date = isoweek.Week(year, week).thursday()
+        begin_date = get_date_from_isoweek(year, week)
         # sanity check for data
         assert year >= 1900 and year < 2100
         assert week >= 1 and week <= 53
@@ -312,7 +317,7 @@ def parse_finland_thl_covid_data_csv(csv_file):
         assert year_week_match is not None
         year = int(year_week_match.group(1))
         week = int(year_week_match.group(2))
-        begin_date = isoweek.Week(year, week).thursday()
+        begin_date = get_date_from_isoweek(year, week)
         if line_type == "Tapausten lukumäärä":
             cur_covid_cases = int(cells[2] or 0)
             assert cur_year == None
@@ -373,7 +378,7 @@ def parse_euromomo_zscores_csv(csv_file):
         assert year_week_match is not None
         year = int(year_week_match.group(1))
         week = int(year_week_match.group(2))
-        begin_date = isoweek.Week(year, week).thursday()
+        begin_date = get_date_from_isoweek(year, week)
         if cells[3]:
             z_score = float(cells[3])
             if begin_date != cur_begin_date:
@@ -933,9 +938,13 @@ def calculate_acm_baseline_method2(all_cause_mortality, all_cause_mortality_esti
         excess_mortality_baseline_part_avg = 0
     print("Sum of excess deaths: %.1f of %d total deaths" % (excess_mortality_baseline_part_sum, baseline_part_deaths_sum))
 
+    excess_mortality_week = []
+    for x_date in excess_mortality_x_date:
+        year, week, _ = x_date.isocalendar()
+        excess_mortality_week.append("%dW%02d" % (year, week))
     output_dataseries("data_output/excess_mortality.csv", 
-                      ["excess_mortality_x", "excess_mortality_x_date", "excess_mortality_y"],
-                      excess_mortality_x, excess_mortality_x_date, excess_mortality_y)
+                      ["excess_mortality_x", "excess_mortality_x_date", "excess_mortality_week", "excess_mortality_y"],
+                      excess_mortality_x, excess_mortality_x_date, excess_mortality_week, excess_mortality_y)
     return (
         (acm_raw_x, acm_raw_x_date, acm_raw_y),
         (acm_averaged_x, acm_averaged_x_date, acm_averaged_y),
@@ -1119,7 +1128,7 @@ def plot_population_forecast_vs_model(population_forecast, baseline_fn):
     plot_fc2021_inactive = numpy.array(plot_fc2021_inactive_list)
 
     fig, ax = plt.subplots(1, 1, figsize=(COLUMN_WIDTH_IN, 1.5))
-    plt.ylim(50000, 59000)
+    plt.ylim(49000, 59000)
     plt.xlim(2010, 2030)
     active_lw = 0.7
     inactive_lw = 0.25
@@ -1157,8 +1166,8 @@ def plot_population_forecast_vs_model(population_forecast, baseline_fn):
                borderpad=0.3, handletextpad=0.6, labelspacing=0.4, frameon=True, fancybox=False, 
                shadow=False, facecolor="white", framealpha=1.0, borderaxespad=0)
     fig.text(0.995, 0.22, "*) 2021: ennakkotieto", horizontalalignment="right", fontsize=6, transform=fig.transFigure)
-    fig.subplots_adjust(left=0.09, right=0.76, top=0.97, bottom=0.15)
-    plot_model_cutoff(fig, ax, xpos=2020, ypos=0.09)
+    fig.subplots_adjust(left=0.095, right=0.76, top=0.97, bottom=0.15)
+    plot_model_cutoff(fig, ax, xpos=2019, ypos=0.09)
     save_fig(fig, "figures/population_forecast_vs_model")
     #plt.show(block=True)
     plt.close(fig)
@@ -1700,7 +1709,7 @@ def plot_yearly_cumulative_mortality(all_cause_mortality, baseline_fn, covid_dat
                 year_incr = 0
             if year_idx == 0:
                 week_labels.append(str(week))
-            x_date = isoweek.Week(year+year_incr, week).thursday()
+            x_date = get_date_from_isoweek(year+year_incr, week)
             deaths = acm_lookup.get(x_date)
             if deaths is None:
                 continue
@@ -1735,7 +1744,7 @@ def plot_yearly_cumulative_mortality(all_cause_mortality, baseline_fn, covid_dat
             linestyle = "solid"
             linewidth = 0.5
         else:
-            color = "C%d" % ((Y2020_COLOR_OFFSET + year_idx) % 10,)
+            color = "C%d" % ((Y2020_COLOR_OFFSET + year - 2020) % 10,)
             linestyle = "solid"
             linewidth = 1.5
         label = str(year)
@@ -2493,11 +2502,9 @@ def main():
 
     if True:
         target_acm = finland_acm
-        target_acm_estimate = None
         auto_limits = False
     else:
         target_acm = finland_acm_by_category["65-"]
-        target_acm_estimate = None
         auto_limits = True
         
     print_top_acm_table(target_acm)
@@ -2508,7 +2515,7 @@ def main():
         (acm_estimate_x, acm_estimate_x_date, acm_estimate_y),
         (baseline_trend_fn, baseline_fn),
         (excess_mortality_x, excess_mortality_x_date, excess_mortality_y)
-    ) = calculate_acm_baseline_method2(target_acm, target_acm_estimate)
+    ) = calculate_acm_baseline_method2(target_acm, None)
     (finland_both_life_expectancy_fn, 
      finland_male_life_expectancy_fn, 
      finland_female_life_expectancy_fn) = calculate_life_expectancy_fn(finland_life_expectancy)
@@ -2566,5 +2573,6 @@ def main():
                               "figures/EuroMoMo/%s zscores combined" % (country,))
     
 if __name__ == "__main__":
+    init_latex()
     main()
 
