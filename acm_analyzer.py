@@ -1855,8 +1855,8 @@ def plot_covid_cases_and_deaths(covid_data):
     covid_tests_y = numpy.array(covid_tests_y_list)
     print("Summer 2021 covid deaths: %d" % (summer_2021_covid_deaths_sum,))
 
-    fig1, ax1 = plt.subplots(1, 1, figsize=(COLUMN_WIDTH_IN, 1.4))
-    ax1.set_ylim(0, 150)
+    fig1, ax1 = plt.subplots(1, 1, figsize=(COLUMN_WIDTH_IN, 0.8))
+    ax1.set_ylim(0, 120)
     ax1.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(20))
     fig1.autofmt_xdate(rotation=0, ha="right", which="both")
     ax1.set_xlim(datetime.date(2021, 1, 1), datetime.date(2022, 1, 1))
@@ -1878,7 +1878,7 @@ def plot_covid_cases_and_deaths(covid_data):
                         bbox_to_anchor=(0.01, 0.99), fontsize=6,
                         borderpad=0.3, labelspacing=0.2, frameon=True, fancybox=False, 
                         shadow=False, facecolor="white", framealpha=1.0, edgecolor="black")
-    fig1.subplots_adjust(left=0.08, right=0.985, top=0.99, bottom=0.10)
+    fig1.subplots_adjust(left=0.08, right=0.985, top=0.955, bottom=0.165)
     save_fig(fig1, "figures/covid_deaths")
 
     ax1b = ax1.twinx()
@@ -2238,6 +2238,8 @@ def plot_euromomo_correlation(excess_mortality_x, excess_mortality_x_date, exces
     year_correlations = []
     year_correllation_lookup = {}
     for x_date, zscore in country_euromomo_data:
+        if x_date.year < 2017:
+            continue
         if x_date not in excess_mortality_lookup:
             continue
         excess_mortality = excess_mortality_lookup[x_date]
@@ -2262,7 +2264,7 @@ def plot_euromomo_correlation(excess_mortality_x, excess_mortality_x_date, exces
     correlation_excess_mortality = numpy.array(correlation_excess_mortality_list)
     correlation_zscore = numpy.array(correlation_zscore_list)
 
-    fig1, ax1 = plt.subplots(1, 1, figsize=(COLUMN_WIDTH_IN, 1.8))
+    fig, ax1 = plt.subplots(1, 1, figsize=(COLUMN_WIDTH_IN, 1.3))
     ax1.set_xlim(-4, 5)
     ylim_min, ylim_max = -120, 250
     ax1.set_ylim(ylim_min, ylim_max)
@@ -2283,13 +2285,18 @@ def plot_euromomo_correlation(excess_mortality_x, excess_mortality_x_date, exces
     trendline_fn = numpy.poly1d(trendline_coeff)
     ax1.plot(correlation_zscore, trendline_fn(correlation_zscore), linewidth=0.4, color="r", linestyle="dashed")
     pearsons_r = numpy.corrcoef(correlation_zscore, correlation_excess_mortality)[1,0]
-    fig1.text(0.86, 0.67, "r=%.3f" % (pearsons_r,), fontsize=7, color="r")
-    fig1.subplots_adjust(left=0.08, right=0.99, top=0.98, bottom=0.07)
-    fig1.legend(handles=year_scatters, loc='upper left', bbox_to_anchor=(0.11, 0.97), fontsize=7, 
-                handletextpad=0.3, handlelength=0.5, borderpad=0.3, labelspacing=0.2, 
-                frameon=True, fancybox=False, shadow=False, facecolor="white", framealpha=1.0, edgecolor="black")
-    save_fig(fig1, "figures/euromomo_correlation")
-    plt.close(fig1)
+    ax1.text(0.80, 0.64, "r=%.2f" % (pearsons_r,), fontsize=7, color="r", transform=ax1.transAxes)
+    ax1_ylabel_transform = matplotlib.transforms.blended_transform_factory(fig.transFigure, ax1.transAxes)
+    ax1.text(0.04, 0.5, "Viikoittainen\nylikuolleisuus", transform=ax1_ylabel_transform, fontsize=7, rotation=90,
+             horizontalalignment="center", verticalalignment="center")
+    ax1.text(0.02, -0.04, "Z-arvo", transform=ax1_ylabel_transform, fontsize=7, horizontalalignment="left", verticalalignment="top")
+    fig.subplots_adjust(left=0.16, right=0.82, top=0.98, bottom=0.1)
+    ax1.legend(handles=year_scatters, loc='upper left', ncol=1, bbox_to_anchor=(1.04, 1), fontsize=8,
+               handletextpad=0.4, handlelength=0.5, borderpad=0.5, labelspacing=0.3, 
+               frameon=True, fancybox=False, shadow=False, facecolor="white", framealpha=1.0, edgecolor="0.5",
+               borderaxespad=0)
+    save_fig(fig, "figures/euromomo_correlation")
+    plt.close(fig)
 
 def plot_processcontrol_deaths_by_halfyears(deaths_and_population_by_month):
     deaths_by_halfyears_x_list = []
@@ -2573,7 +2580,7 @@ def main():
     with open("Finland/Finland population forecast.csv", "rt", encoding="iso-8859-1") as csv_file:
         finland_population_forecast = parse_finland_population_forecast_csv(csv_file)
         assert len(finland_population_forecast) > 10
-    with open("EuroMoMo/Euromomo 2022-03-22 all countries z-scores.csv", "rt", encoding="utf-8") as csv_file:
+    with open("EuroMoMo/Euromomo all countries z-scores 2022-03-22.csv", "rt", encoding="utf-8") as csv_file:
         euromomo_data = parse_euromomo_zscores_csv(csv_file)
         assert len(euromomo_data) > 50
         finland_euromomo_data = [(d, item["Finland"]) for d, item in euromomo_data if item.get("Finland")]
@@ -2610,35 +2617,36 @@ def main():
     print("Year\tEstimated yearly mortality")
     for year in range(1990, 2025+1):
         print("%d\t%d" % (year, round(get_model_yearly_mortality(baseline_fn, year))))
-    plot_population_forecast_vs_model(finland_population_forecast, baseline_fn)
-    plot_monthly_deaths_per_100k(finland_deaths_and_population_by_month)
-    plot_raw_acm(acm_raw_x, acm_raw_x_date, acm_raw_y, auto_limits)
-    plot_acm_baseline_trend(acm_raw_x, acm_raw_x_date, acm_raw_y,
+    if False:
+        plot_population_forecast_vs_model(finland_population_forecast, baseline_fn)
+        plot_monthly_deaths_per_100k(finland_deaths_and_population_by_month)
+        plot_raw_acm(acm_raw_x, acm_raw_x_date, acm_raw_y, auto_limits)
+        plot_acm_baseline_trend(acm_raw_x, acm_raw_x_date, acm_raw_y,
+                                 acm_averaged_x_date, acm_averaged_x_date, acm_averaged_y,
+                                 baseline_average_x, baseline_average_x_date, baseline_average_y,
+                                 acm_estimate_x, acm_estimate_x_date, acm_estimate_y,
+                                 baseline_trend_fn, auto_limits)
+        plot_acm_baseline_fn(acm_raw_x, acm_raw_x_date, acm_raw_y,
                              acm_averaged_x_date, acm_averaged_x_date, acm_averaged_y,
                              baseline_average_x, baseline_average_x_date, baseline_average_y,
                              acm_estimate_x, acm_estimate_x_date, acm_estimate_y,
-                             baseline_trend_fn, auto_limits)
-    plot_acm_baseline_fn(acm_raw_x, acm_raw_x_date, acm_raw_y,
-                         acm_averaged_x_date, acm_averaged_x_date, acm_averaged_y,
-                         baseline_average_x, baseline_average_x_date, baseline_average_y,
-                         acm_estimate_x, acm_estimate_x_date, acm_estimate_y,
-                         baseline_fn, auto_limits)
-    plot_acm_baseline_trend_and_fn(acm_raw_x, acm_raw_x_date, acm_raw_y,
-                                   acm_averaged_x_date, acm_averaged_x_date, acm_averaged_y,
-                                   baseline_average_x, baseline_average_x_date, baseline_average_y,
-                                   acm_estimate_x, acm_estimate_x_date, acm_estimate_y,
-                                   baseline_trend_fn, baseline_fn, auto_limits)
-    plot_combined_baseline_subplots(acm_raw_x, acm_raw_x_date, acm_raw_y,
-                                    acm_averaged_x_date, acm_averaged_x_date, acm_averaged_y,
-                                    baseline_average_x, baseline_average_x_date, baseline_average_y,
-                                    acm_estimate_x, acm_estimate_x_date, acm_estimate_y,
-                                    baseline_trend_fn, baseline_fn, auto_limits)
-    plot_excess_mortality(excess_mortality_x, excess_mortality_x_date, excess_mortality_y)
-    # yearly cumulative mortality from newyear
-    plot_yearly_cumulative_mortality(target_acm, baseline_fn, finland_covid_data, start_week=1)
-    # yearly cumulative mortality from spring
-    plot_yearly_cumulative_mortality(target_acm, baseline_fn, finland_covid_data, start_week=16)
-    plot_all_time_cumulative_excess_mortality(target_acm, baseline_fn)
+                             baseline_fn, auto_limits)
+        plot_acm_baseline_trend_and_fn(acm_raw_x, acm_raw_x_date, acm_raw_y,
+                                       acm_averaged_x_date, acm_averaged_x_date, acm_averaged_y,
+                                       baseline_average_x, baseline_average_x_date, baseline_average_y,
+                                       acm_estimate_x, acm_estimate_x_date, acm_estimate_y,
+                                       baseline_trend_fn, baseline_fn, auto_limits)
+        plot_combined_baseline_subplots(acm_raw_x, acm_raw_x_date, acm_raw_y,
+                                        acm_averaged_x_date, acm_averaged_x_date, acm_averaged_y,
+                                        baseline_average_x, baseline_average_x_date, baseline_average_y,
+                                        acm_estimate_x, acm_estimate_x_date, acm_estimate_y,
+                                        baseline_trend_fn, baseline_fn, auto_limits)
+        plot_excess_mortality(excess_mortality_x, excess_mortality_x_date, excess_mortality_y)
+        # yearly cumulative mortality from newyear
+        plot_yearly_cumulative_mortality(target_acm, baseline_fn, finland_covid_data, start_week=1)
+        # yearly cumulative mortality from spring
+        plot_yearly_cumulative_mortality(target_acm, baseline_fn, finland_covid_data, start_week=16)
+        plot_all_time_cumulative_excess_mortality(target_acm, baseline_fn)
     plot_covid_cases_and_deaths(finland_covid_data)
     plot_euromomo_zscores(finland_euromomo_data,
                           "figures/euromomo_zscores",
@@ -2650,7 +2658,7 @@ def main():
     plot_processcontrol_deaths_by_halfyears(finland_deaths_and_population_by_month_extended)
     #plot_population_normalization(finland_both_life_expectancy_fn, finland_male_life_expectancy_fn, finland_female_life_expectancy_fn, finland_population_by_year_and_age, baseline_trend_fn)
 
-    sys.exit(1)
+    sys.exit(0)
 
     all_euromomo_countries = set()
     for d, item in euromomo_data:
