@@ -1128,7 +1128,7 @@ def plot_population_forecast_vs_model(population_forecast, baseline_fn):
     plot_fc2021_inactive = numpy.array(plot_fc2021_inactive_list)
 
     fig, ax = plt.subplots(1, 1, figsize=(COLUMN_WIDTH_IN, 1.5))
-    plt.ylim(49000, 59000)
+    plt.ylim(46000, 62000)
     plt.xlim(2010, 2030)
     active_lw = 0.7
     inactive_lw = 0.25
@@ -1147,11 +1147,12 @@ def plot_population_forecast_vs_model(population_forecast, baseline_fn):
     line_fc2021, = ax.plot(plot_x, plot_fc2021, label="V-e 2021", color="C1", linewidth=active_lw)
     ax.plot(plot_x, plot_fc2021_inactive, label=None, color="C1", linewidth=inactive_lw, linestyle="dashed")
     plt.grid(True)
-    ax.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(1000))
+    ax.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(2000))
     ax.xaxis.set_major_locator(matplotlib.ticker.MultipleLocator(1))
-    ax.tick_params(axis="x", pad=0.5, labelsize=7, labelrotation=60)
+    ax.tick_params(axis="x", pad=0.5, labelsize=7, labelrotation=70)
     for label in ax.get_xticklabels():
         label.set_horizontalalignment('center')
+        label.set_verticalalignment('top')
     ax.legend(handles=[line_actual,
                        line_model,
                        line_fc2021,
@@ -1167,7 +1168,7 @@ def plot_population_forecast_vs_model(population_forecast, baseline_fn):
                shadow=False, facecolor="white", framealpha=1.0, borderaxespad=0)
     fig.text(0.995, 0.22, "*) 2021: ennakkotieto", horizontalalignment="right", fontsize=6, transform=fig.transFigure)
     fig.subplots_adjust(left=0.095, right=0.76, top=0.97, bottom=0.15)
-    plot_model_cutoff(fig, ax, xpos=2019, ypos=0.09)
+    plot_model_cutoff(fig, ax, xpos=2019.5, ypos=0.18)
     save_fig(fig, "figures/population_forecast_vs_model")
     #plt.show(block=True)
     plt.close(fig)
@@ -2057,6 +2058,86 @@ def plot_euromomo_zscores(country_euromomo_data, output_file_name, output_cumula
     save_fig(fig3, output_combined_file_name)
     plt.close(fig3)
     
+def plot_highlighted_euromomo_zscores(country_euromomo_data):
+    zscore_x_list = []
+    zscore_x_date_list = []
+    zscore_y_list = []
+    cumulative_zscore_x_list = []
+    cumulative_zscore_x_date_list = []
+    cumulative_zscore_y_list = []
+    cumulative_zscore = 0
+    pre_2021_cumulative_max = 0
+    for x_date, zscore in country_euromomo_data[:-2]:
+        x = (x_date - T0_DATE).days
+        zscore_x_list.append(x)
+        zscore_x_date_list.append(x_date)
+        zscore_y_list.append(zscore)
+        if x_date >= datetime.date(2017, 1, 1):
+            if len(cumulative_zscore_x_list) == 0:
+                prev_x_date = x_date - datetime.timedelta(days=7)
+                prev_x = (prev_x_date - T0_DATE).days
+                cumulative_zscore_x_list.append(prev_x)
+                cumulative_zscore_x_date_list.append(prev_x_date)
+                cumulative_zscore_y_list.append(0)
+            cumulative_zscore += zscore
+            cumulative_zscore_x_list.append(x)
+            cumulative_zscore_x_date_list.append(x_date)
+            cumulative_zscore_y_list.append(cumulative_zscore)
+            if x_date < datetime.date(2021, 1, 1) and cumulative_zscore > pre_2021_cumulative_max:
+                pre_2021_cumulative_max = cumulative_zscore
+    zscore_x = numpy.array(zscore_x_list)
+    zscore_x_date = numpy.array(zscore_x_date_list)
+    zscore_y = numpy.array(zscore_y_list)
+    zscore_avg_y = calculate_moving_average(zscore_y, 7)
+    cumulative_zscore_x = numpy.array(cumulative_zscore_x_list)
+    cumulative_zscore_x_date = numpy.array(cumulative_zscore_x_date_list)
+    cumulative_zscore_y = numpy.array(cumulative_zscore_y_list)
+
+    fig, ax3 = plt.subplots(1, 1, figsize=(COLUMN_WIDTH_IN, 1.2))
+    xlim_start, xlim_end = datetime.date(2017, 1, 1), datetime.date(2022, 12, 31)
+    #xlim_start, xlim_end = min(zscore_x_date), max(zscore_x_date)
+    fig.autofmt_xdate(rotation=0, ha="right", which="both")
+    ax3.set_ylim(-3, 4)
+    ax3.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(1))
+    ax3.set_xlim(xlim_start, xlim_end)
+    ax3.axhline(linewidth=0.4, color="black")
+    fill_params = {
+        "linewidth": 0.05,
+        "interpolate": True,
+        "alpha": 0.8,
+        "edgecolor": "black",
+    }
+    ax3.scatter(zscore_x_date, zscore_y, s=1, color=BLUE_COLOR)
+    ax3.plot(zscore_x_date, zscore_y, linewidth=0.25, color=BLUE_COLOR)
+    #ax3.plot(zscore_x_date, zscore_avg_y, linewidth=0.6, color="C6", linestyle="solid")
+    # Show year labels in top x-axis
+    ax3b = ax3.twiny()
+    ax3b.tick_params(axis="x", which="major", reset=True, labelsize=7, pad=0,
+                     labeltop=True, labelbottom=False, top=False, bottom=False)
+    ax3.tick_params(axis="x", which="major", reset=True, labeltop=False, labelbottom=False, top=False, bottom=False)
+    ax3b.set_xlim(xlim_start, xlim_end)
+    ax3b.grid(which="both", visible=False)
+    ax3b.xaxis.set_major_locator(matplotlib.dates.YearLocator(month=7))
+    ax3b.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%Y"))
+    for label in ax3b.get_xticklabels(which="major"):
+        label.set_horizontalalignment('center')
+    # Show week numbers in bottom x-axis
+    ax3.xaxis.set_major_locator(matplotlib.dates.YearLocator())
+    ax3.grid(axis="x", color='gray', linestyle='solid', linewidth=0.5)
+    # Labels manually
+    ax3_ylabel_transform = matplotlib.transforms.blended_transform_factory(fig.transFigure, ax3.transAxes)
+    ax3.text(0.02, 0.5, "Viikoittainen z", transform=ax3_ylabel_transform, fontsize=7, rotation=90,
+             horizontalalignment="center", verticalalignment="center")
+    # Rectangles
+    rect_start_x = (get_date_from_isoweek(2021, 24)-xlim_start).days / (xlim_end - xlim_start).days
+    rect_end_x = (get_date_from_isoweek(2022, 13)-xlim_start).days / (xlim_end - xlim_start).days
+    rect_patch = matplotlib.patches.Rectangle((rect_start_x, 0), rect_end_x-rect_start_x, 1, transform=ax3.transAxes, 
+                                              linewidth=None, color="#ffaaaa", fill=True, clip_on=True, zorder=0)
+    ax3.add_patch(rect_patch)
+    fig.subplots_adjust(left=0.08, right=0.995, top=0.92, bottom=0.04, wspace=0, hspace=0.12)
+    save_fig(fig, "figures/euromomo_zscores_highlighted")
+    plt.close(fig)
+
 def plot_euromomo_vs_model_cumulative(excess_mortality_x, excess_mortality_x_date, excess_mortality_y, country_euromomo_data):
     zscore_x_list = []
     zscore_x_date_list = []
@@ -2181,7 +2262,13 @@ def plot_euromomo_correlation(excess_mortality_x, excess_mortality_x_date, exces
     correlation_excess_mortality = numpy.array(correlation_excess_mortality_list)
     correlation_zscore = numpy.array(correlation_zscore_list)
 
-    fig1, ax1 = plt.subplots(1, 1, figsize=(COLUMN_WIDTH_IN, 2.8))
+    fig1, ax1 = plt.subplots(1, 1, figsize=(COLUMN_WIDTH_IN, 1.8))
+    ax1.set_xlim(-4, 5)
+    ylim_min, ylim_max = -120, 250
+    ax1.set_ylim(ylim_min, ylim_max)
+    assert min(correlation_excess_mortality) > ylim_min
+    assert max(correlation_excess_mortality) < ylim_max
+    ax1.xaxis.set_major_locator(matplotlib.ticker.MultipleLocator(1))
     ax1.axhline(linewidth=0.5, color="black")
     ax1.axvline(linewidth=0.5, color="black")
     symbols = "D*Xsov^Ph"
@@ -2197,7 +2284,7 @@ def plot_euromomo_correlation(excess_mortality_x, excess_mortality_x_date, exces
     ax1.plot(correlation_zscore, trendline_fn(correlation_zscore), linewidth=0.4, color="r", linestyle="dashed")
     pearsons_r = numpy.corrcoef(correlation_zscore, correlation_excess_mortality)[1,0]
     fig1.text(0.86, 0.67, "r=%.3f" % (pearsons_r,), fontsize=7, color="r")
-    fig1.subplots_adjust(left=0.08, right=0.99, top=0.99, bottom=0.05)
+    fig1.subplots_adjust(left=0.08, right=0.99, top=0.98, bottom=0.07)
     fig1.legend(handles=year_scatters, loc='upper left', bbox_to_anchor=(0.11, 0.97), fontsize=7, 
                 handletextpad=0.3, handlelength=0.5, borderpad=0.3, labelspacing=0.2, 
                 frameon=True, fancybox=False, shadow=False, facecolor="white", framealpha=1.0, edgecolor="black")
@@ -2557,10 +2644,13 @@ def main():
                           "figures/euromomo_zscores",
                           "figures/euromomo_zscores_cumulative",
                           "figures/euromomo_zscores_combined")
+    plot_highlighted_euromomo_zscores(finland_euromomo_data)
     plot_euromomo_vs_model_cumulative(excess_mortality_x, excess_mortality_x_date, excess_mortality_y, finland_euromomo_data)
     plot_euromomo_correlation(excess_mortality_x, excess_mortality_x_date, excess_mortality_y, finland_euromomo_data)
     plot_processcontrol_deaths_by_halfyears(finland_deaths_and_population_by_month_extended)
     #plot_population_normalization(finland_both_life_expectancy_fn, finland_male_life_expectancy_fn, finland_female_life_expectancy_fn, finland_population_by_year_and_age, baseline_trend_fn)
+
+    sys.exit(1)
 
     all_euromomo_countries = set()
     for d, item in euromomo_data:
