@@ -1173,7 +1173,7 @@ def plot_population_forecast_vs_model(population_forecast, baseline_fn):
     #plt.show(block=True)
     plt.close(fig)
 
-def plot_monthly_deaths_per_100k(deaths_and_population_by_month):
+def plot_monthly_deaths_per_100k(deaths_and_population_by_month, covid_data):
     months_x = numpy.array(range(1, 13))
     by_month = dict(((x, []) for x in months_x))
     by_month_2021 = dict()
@@ -1182,11 +1182,11 @@ def plot_monthly_deaths_per_100k(deaths_and_population_by_month):
         year = month_item["year"]
         month = month_item["month"]
         if year < 2021:
-            by_month[month].append(month_item["deaths_per_100k"])
+            by_month[month].append(month_item)
         elif year == 2021:
-            by_month_2021[month] = month_item["deaths_per_100k"]
+            by_month_2021[month] = month_item
         elif year == 2022:
-            by_month_2022[month] = month_item["deaths_per_100k"]
+            by_month_2022[month] = month_item
     min_y = []
     max_y = []
     min80pc_y = []
@@ -1194,7 +1194,8 @@ def plot_monthly_deaths_per_100k(deaths_and_population_by_month):
     line2021_y = []
     line2022_y = []
     for month in months_x:
-        month_deaths = by_month[month]
+        month_items = by_month[month]
+        month_deaths = list(map(lambda x: x["deaths_per_100k"], month_items))
         month_deaths.sort()
         min_y.append(month_deaths[0])
         max_y.append(month_deaths[-1])
@@ -1202,10 +1203,30 @@ def plot_monthly_deaths_per_100k(deaths_and_population_by_month):
         idx90pc = idx10pc + round(0.8*len(month_deaths))
         min80pc_y.append(month_deaths[idx10pc])
         max80pc_y.append(month_deaths[idx90pc])
-        line2021_y.append(by_month_2021.get(month))
-        line2022_y.append(by_month_2022.get(month))
+        item2021 = by_month_2021.get(month)
+        line2021_y.append(item2021["deaths_per_100k"] if item2021 is not None else None)
+        item2022 = by_month_2022.get(month)
+        line2022_y.append(item2022["deaths_per_100k"] if item2022 is not None else None)
+    line_covid_2021_y = []
+    cur_month = None
+    cur_month_sum = None
+    for x_date, covid_deaths, covid_cases, covid_tests in covid_data:
+        if x_date.year != 2021:
+            continue
+        if cur_month is None or x_date.month != cur_month:
+            if cur_month_sum is not None:
+                population = by_month_2021[cur_month]["population"]
+                line_covid_2021_y.append(cur_month_sum / (population / 100000))
+            cur_month = x_date.month
+            cur_month_sum = 0
+        cur_month_sum += covid_deaths
+    assert cur_month_sum is not None
+    assert cur_month == 12
+    population = by_month_2021[cur_month]["population"]
+    line_covid_2021_y.append(cur_month_sum / (population / 100000))
+    assert len(line_covid_2021_y) == 12
     fig, ax = plt.subplots(1, 1, figsize=(COLUMN_WIDTH_IN, 1.5))
-    ax.set_ylim(67, 120)
+    ax.set_ylim(0, 120)
     ax.xaxis.set_major_locator(matplotlib.ticker.MultipleLocator(1))
     minmax_fill = ax.fill_between(months_x, max_y, min_y, label="Min-max 1990-2020", 
                                   facecolor="C0", linewidth=0.05, interpolate=True,
@@ -1213,18 +1234,19 @@ def plot_monthly_deaths_per_100k(deaths_and_population_by_month):
     minmax80pc_fill = ax.fill_between(months_x, max80pc_y, min80pc_y, label="80%", 
                                       facecolor="C0", linewidth=0.05, interpolate=True,
                                       alpha=1, edgecolor=None)
-    line_2021, = ax.plot(months_x, line2021_y, label="2021", color="C1", marker='o', markersize=1, linewidth=DEFAULT_LINEWIDTH, zorder=10)
-    line_2022, = ax.plot(months_x, line2022_y, label="2022", color="C4", marker='*', markersize=2, linewidth=DEFAULT_LINEWIDTH, zorder=10)
-    fig.legend(handles=[minmax_fill, minmax80pc_fill, line_2021, line_2022],
-               loc=(0.12, 0.84), ncol=4, fontsize=7,
-               borderpad=0.3, handletextpad=0.25, columnspacing=1, frameon=True, fancybox=False, 
-               shadow=False, facecolor="white", framealpha=1.0)
+    line_2021, = ax.plot(months_x, line2021_y, label="2021", color="C1", marker='D', markersize=2, linewidth=DEFAULT_LINEWIDTH, zorder=10)
+    #line_2022, = ax.plot(months_x, line2022_y, label="2022", color="C4", marker='*', markersize=2, linewidth=DEFAULT_LINEWIDTH, zorder=10)
+    line_covid_2021, = ax.plot(months_x, line_covid_2021_y, label="2021 korona", color="C1", marker='o', markersize=1, linewidth=DEFAULT_LINEWIDTH, zorder=10)
+    ax.legend(handles=[minmax_fill, minmax80pc_fill, line_2021, line_covid_2021],
+              loc="upper left", bbox_to_anchor=(0, 1.15), ncol=4, fontsize=7,
+              borderpad=0.3, handletextpad=0.25, columnspacing=1, frameon=True, fancybox=False, 
+              shadow=False, facecolor="white", framealpha=1.0, borderaxespad=0.05)
     ax_ylabel_transform = matplotlib.transforms.blended_transform_factory(fig.transFigure, ax.transAxes)
     ax.text(0.02, 0.5, "Kuolleet per 100 000", transform=ax_ylabel_transform, fontsize=7, rotation=90,
             horizontalalignment="center", verticalalignment="center")
     ax.text(0.005, -0.035, "Kuukausi", transform=ax_ylabel_transform, fontsize=7,
             horizontalalignment="left", verticalalignment="top")
-    fig.subplots_adjust(left=0.095, right=0.99, top=0.97, bottom=0.09)
+    fig.subplots_adjust(left=0.095, right=0.99, top=0.88, bottom=0.09)
     save_fig(fig, "figures/monthly_deaths_per_100k")
     #plt.show(block=True)
     plt.close(fig)
@@ -1874,12 +1896,13 @@ def plot_covid_cases_and_deaths(covid_data):
     ax1.tick_params(axis="x", which="major",
                     top=False, bottom=True, labeltop=False, labelbottom=False)
     ax1.tick_params(axis="y", direction="out", reset=False, left=True, right=False, which="both")
-    legend = plt.legend(handles=[deaths_line], loc='upper left',
-                        bbox_to_anchor=(0.01, 0.99), fontsize=6,
-                        borderpad=0.3, labelspacing=0.2, frameon=True, fancybox=False, 
-                        shadow=False, facecolor="white", framealpha=1.0, edgecolor="black")
+    #legend = plt.legend(handles=[deaths_line], loc='upper left',
+    #                    bbox_to_anchor=(0.01, 0.99), fontsize=6,
+    #                    borderpad=0.3, labelspacing=0.2, frameon=True, fancybox=False, 
+    #                    shadow=False, facecolor="white", framealpha=1.0, edgecolor="black")
     fig1.subplots_adjust(left=0.08, right=0.985, top=0.955, bottom=0.165)
     save_fig(fig1, "figures/covid_deaths")
+    #legend.remove()
 
     ax1b = ax1.twinx()
     ax1b.set_ylim(0, 75000)
@@ -1895,7 +1918,6 @@ def plot_covid_cases_and_deaths(covid_data):
                     reset=True, top=False, bottom=True, left=True, right=True,
                     which="both")
     ax1b.tick_params(axis="y", direction="out", reset=False, left=False, right=True, which="both")
-    legend.remove()
     legend = plt.legend(handles=[deaths_line, cases_line], loc='upper left',
                         bbox_to_anchor=(0.01, 0.99), fontsize=6,
                         borderpad=0.3, labelspacing=0.2, frameon=True, fancybox=False, 
@@ -2617,36 +2639,35 @@ def main():
     print("Year\tEstimated yearly mortality")
     for year in range(1990, 2025+1):
         print("%d\t%d" % (year, round(get_model_yearly_mortality(baseline_fn, year))))
-    if False:
-        plot_population_forecast_vs_model(finland_population_forecast, baseline_fn)
-        plot_monthly_deaths_per_100k(finland_deaths_and_population_by_month)
-        plot_raw_acm(acm_raw_x, acm_raw_x_date, acm_raw_y, auto_limits)
-        plot_acm_baseline_trend(acm_raw_x, acm_raw_x_date, acm_raw_y,
-                                 acm_averaged_x_date, acm_averaged_x_date, acm_averaged_y,
-                                 baseline_average_x, baseline_average_x_date, baseline_average_y,
-                                 acm_estimate_x, acm_estimate_x_date, acm_estimate_y,
-                                 baseline_trend_fn, auto_limits)
-        plot_acm_baseline_fn(acm_raw_x, acm_raw_x_date, acm_raw_y,
+    plot_population_forecast_vs_model(finland_population_forecast, baseline_fn)
+    plot_monthly_deaths_per_100k(finland_deaths_and_population_by_month, finland_covid_data)
+    plot_raw_acm(acm_raw_x, acm_raw_x_date, acm_raw_y, auto_limits)
+    plot_acm_baseline_trend(acm_raw_x, acm_raw_x_date, acm_raw_y,
                              acm_averaged_x_date, acm_averaged_x_date, acm_averaged_y,
                              baseline_average_x, baseline_average_x_date, baseline_average_y,
                              acm_estimate_x, acm_estimate_x_date, acm_estimate_y,
-                             baseline_fn, auto_limits)
-        plot_acm_baseline_trend_and_fn(acm_raw_x, acm_raw_x_date, acm_raw_y,
-                                       acm_averaged_x_date, acm_averaged_x_date, acm_averaged_y,
-                                       baseline_average_x, baseline_average_x_date, baseline_average_y,
-                                       acm_estimate_x, acm_estimate_x_date, acm_estimate_y,
-                                       baseline_trend_fn, baseline_fn, auto_limits)
-        plot_combined_baseline_subplots(acm_raw_x, acm_raw_x_date, acm_raw_y,
-                                        acm_averaged_x_date, acm_averaged_x_date, acm_averaged_y,
-                                        baseline_average_x, baseline_average_x_date, baseline_average_y,
-                                        acm_estimate_x, acm_estimate_x_date, acm_estimate_y,
-                                        baseline_trend_fn, baseline_fn, auto_limits)
-        plot_excess_mortality(excess_mortality_x, excess_mortality_x_date, excess_mortality_y)
-        # yearly cumulative mortality from newyear
-        plot_yearly_cumulative_mortality(target_acm, baseline_fn, finland_covid_data, start_week=1)
-        # yearly cumulative mortality from spring
-        plot_yearly_cumulative_mortality(target_acm, baseline_fn, finland_covid_data, start_week=16)
-        plot_all_time_cumulative_excess_mortality(target_acm, baseline_fn)
+                             baseline_trend_fn, auto_limits)
+    plot_acm_baseline_fn(acm_raw_x, acm_raw_x_date, acm_raw_y,
+                         acm_averaged_x_date, acm_averaged_x_date, acm_averaged_y,
+                         baseline_average_x, baseline_average_x_date, baseline_average_y,
+                         acm_estimate_x, acm_estimate_x_date, acm_estimate_y,
+                         baseline_fn, auto_limits)
+    plot_acm_baseline_trend_and_fn(acm_raw_x, acm_raw_x_date, acm_raw_y,
+                                   acm_averaged_x_date, acm_averaged_x_date, acm_averaged_y,
+                                   baseline_average_x, baseline_average_x_date, baseline_average_y,
+                                   acm_estimate_x, acm_estimate_x_date, acm_estimate_y,
+                                   baseline_trend_fn, baseline_fn, auto_limits)
+    plot_combined_baseline_subplots(acm_raw_x, acm_raw_x_date, acm_raw_y,
+                                    acm_averaged_x_date, acm_averaged_x_date, acm_averaged_y,
+                                    baseline_average_x, baseline_average_x_date, baseline_average_y,
+                                    acm_estimate_x, acm_estimate_x_date, acm_estimate_y,
+                                    baseline_trend_fn, baseline_fn, auto_limits)
+    plot_excess_mortality(excess_mortality_x, excess_mortality_x_date, excess_mortality_y)
+    # yearly cumulative mortality from newyear
+    plot_yearly_cumulative_mortality(target_acm, baseline_fn, finland_covid_data, start_week=1)
+    # yearly cumulative mortality from spring
+    plot_yearly_cumulative_mortality(target_acm, baseline_fn, finland_covid_data, start_week=16)
+    plot_all_time_cumulative_excess_mortality(target_acm, baseline_fn)
     plot_covid_cases_and_deaths(finland_covid_data)
     plot_euromomo_zscores(finland_euromomo_data,
                           "figures/euromomo_zscores",
