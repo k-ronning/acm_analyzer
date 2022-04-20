@@ -1850,6 +1850,17 @@ def plot_all_time_cumulative_excess_mortality(all_cause_mortality, baseline_fn):
     plot_model_cutoff(fig, ax, ypos=0.09)
     save_fig(fig, "figures/all_time_cumulative_excess_mortality")
     #plt.show(block=True)
+
+    fig.subplots_adjust(bottom=0.11, top=0.92, left=0.095, right=0.99)
+    ax_ylabel_transform = matplotlib.transforms.blended_transform_factory(fig.transFigure, ax.transAxes)
+    ax.text(0.5, 1.02, "Kumuloitu ylikuolleisuus", transform=ax_ylabel_transform, fontsize=9,
+            horizontalalignment="center", verticalalignment="bottom")
+    #ax.text(0.02, 0.5, "Kumulatiivinen ylikuolleisuus", transform=ax_ylabel_transform, fontsize=7, rotation=90,
+    #        horizontalalignment="center", verticalalignment="center")
+    #ax.text(0.005, -0.05, "Vuosi", transform=ax_ylabel_transform, fontsize=7,
+    #        horizontalalignment="left", verticalalignment="top")
+    save_fig(fig, "figures/all_time_cumulative_excess_mortality_labels")
+
     plt.close(fig)
 
 def plot_covid_cases_and_deaths(covid_data):
