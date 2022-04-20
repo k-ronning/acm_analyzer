@@ -2189,7 +2189,7 @@ def plot_euromomo_vs_model_cumulative(excess_mortality_x, excess_mortality_x_dat
                                                                  excess_mortality_x_date[excess_mortality_idx:], 
                                                                  excess_mortality_y[excess_mortality_idx:]):
         x = (x_date - T0_DATE).days
-        assert excmort_x_d == x_date
+        assert excmort_x_d == x_date, "excmort_x_d '%s' != x_date '%s'" % (excmort_x_d, x_date)
         assert excmort_x == x
         zscore_x_list.append(x)
         zscore_x_date_list.append(x_date)
@@ -2613,10 +2613,10 @@ def main():
     with open("Finland/Finland population forecast.csv", "rt", encoding="iso-8859-1") as csv_file:
         finland_population_forecast = parse_finland_population_forecast_csv(csv_file)
         assert len(finland_population_forecast) > 10
-    with open("EuroMoMo/Euromomo all countries z-scores 2022-03-22.csv", "rt", encoding="utf-8") as csv_file:
+    with open("EuroMoMo/Euromomo all countries z-scores 2022-04-20.csv", "rt", encoding="utf-8") as csv_file:
         euromomo_data = parse_euromomo_zscores_csv(csv_file)
         assert len(euromomo_data) > 50
-        finland_euromomo_data = [(d, item["Finland"]) for d, item in euromomo_data if item.get("Finland")]
+        finland_euromomo_data = [(d, item["Finland"]) for d, item in euromomo_data if item.get("Finland") is not None]
     # Source: Worldometer - Finland Demographics - Life Expectancy in Finland
     # https://www.worldometers.info/demographics/finland-demographics/#life-exp
     finland_life_expectancy = list(zip([1950,   1955,   1960,   1965,   1970,   1975,   1980,   1985,   1990,   1995,   2000,   2005,   2010,   2015,   2020],
