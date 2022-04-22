@@ -182,7 +182,7 @@ class WeekNumberFormatter(matplotlib.dates.DateFormatter):
 #
 def parse_finland_acm_csv(csv_file, trim_weeks_from_end):
     out_tuples = []
-    output_by_category = {}
+    acm_by_category = {}
     all_lines = list(csv_file.readlines())
     heading_line = all_lines[2]
     heading_cells = heading_line.strip().split(";")
@@ -220,15 +220,15 @@ def parse_finland_acm_csv(csv_file, trim_weeks_from_end):
         assert heading_cells[column_idx+2] == '"%s Naiset Kuolleet"' % (age_category_str,)
         category_key = str(age_start) + "-" 
         if age_end:
-            category_key += " " + str(age_end)
-        output_by_category[category_key] = []
-        output_by_category[category_key + "_male"] = []
-        output_by_category[category_key + "_female"] = []
+            category_key += str(age_end)
+        acm_by_category[category_key] = []
+        acm_by_category[category_key + "_male"] = []
+        acm_by_category[category_key + "_female"] = []
         for meta_category in meta_categories:
-            if meta_category not in output_by_category:
-                output_by_category[meta_category] = []
-                output_by_category[meta_category + "_male"] = []
-                output_by_category[meta_category + "_female"] = []
+            if meta_category not in acm_by_category:
+                acm_by_category[meta_category] = []
+                acm_by_category[meta_category + "_male"] = []
+                acm_by_category[meta_category + "_female"] = []
         column_idx += 3
     year = None
     week = None
@@ -259,19 +259,19 @@ def parse_finland_acm_csv(csv_file, trim_weeks_from_end):
         column_idx = 5
         output_meta_categories = dict()
         for age_start, age_end, meta_categories in age_categories:
-            age_category_key = str(age_start) + "-" 
+            category_key = str(age_start) + "-" 
             if age_end:
-                age_category_key += " " + str(age_end)
+                category_key += str(age_end)
             age_deaths = int(cells[column_idx])
             age_male_deaths = int(cells[column_idx+1])
             age_female_deaths = int(cells[column_idx+2])
             assert age_deaths == age_male_deaths + age_female_deaths
             category_deaths_sum += age_deaths
-            output_by_category[category_key].append((begin_date, age_deaths))
+            acm_by_category[category_key].append((begin_date, age_deaths))
             male_deaths_sum += age_male_deaths
-            output_by_category[category_key + "_male"].append((begin_date, age_male_deaths))
+            acm_by_category[category_key + "_male"].append((begin_date, age_male_deaths))
             female_deaths_sum += age_female_deaths
-            output_by_category[category_key + "_female"].append((begin_date, age_female_deaths))
+            acm_by_category[category_key + "_female"].append((begin_date, age_female_deaths))
             for meta_category in meta_categories:
                 if meta_category not in output_meta_categories:
                     output_meta_categories[meta_category] = 0
@@ -282,12 +282,12 @@ def parse_finland_acm_csv(csv_file, trim_weeks_from_end):
                 output_meta_categories[meta_category + "_female"] += age_female_deaths
             column_idx += 3
         for meta_category, meta_category_sum in output_meta_categories.items():
-            output_by_category[meta_category].append((begin_date, meta_category_sum))
+            acm_by_category[meta_category].append((begin_date, meta_category_sum))
         assert category_deaths_sum == deaths
         assert male_deaths_sum == male_deaths
         assert female_deaths_sum == female_deaths
     # trim data from end because it is not final
-    return out_tuples[:-trim_weeks_from_end], dict(((k, v[:-trim_weeks_from_end]) for k, v in output_by_category.items()))
+    return out_tuples[:-trim_weeks_from_end], dict(((k, v[:-trim_weeks_from_end]) for k, v in acm_by_category.items()))
 
 THL_YEAR_WEEK_RE = re.compile(r"Vuosi (\d\d\d\d) Viikko (\d\d)")
 
@@ -1251,6 +1251,137 @@ def plot_monthly_deaths_per_100k(deaths_and_population_by_month, covid_data):
     #plt.show(block=True)
     plt.close(fig)
     
+def plot_weekly_deaths_per_age_per_1M(population_by_year_and_age, acm_by_category):
+    age_buckets = [
+        {
+            "name": "0-19 -vuotiaat",
+            "age_categories": ["0-4", "5-9", "10-14", "15-19",],
+            "age_start": 0,
+            "age_end": 19,
+        },
+        {
+            "name": "20-49 -vuotiaat",
+            "age_categories": ["20-24", "25-29", "30-34", "35-39", "40-44", "45-49"],
+            "age_start": 20,
+            "age_end": 49,
+        },
+        {
+            "name": "50-59 -vuotiaat",
+            "age_categories": ["50-54", "55-59",],
+            "age_start": 50,
+            "age_end": 59,
+        },
+        {
+            "name": "60-69 -vuotiaat",
+            "age_categories": ["60-64", "65-69",],
+            "age_start": 60,
+            "age_end": 69,
+        },
+        {
+            "name": "70-79 -vuotiaat",
+            "age_categories": ["70-74", "75-79",],
+            "age_start": 70,
+            "age_end": 79,
+        },
+        {
+            "name": "Yli 80-vuotiaat",
+            "age_categories": ["80-84", "85-89", "90-"],
+            "age_start": 80,
+            "age_end": None,
+        },
+    ]
+    for age_bucket in age_buckets:
+        bucket_deaths_timeseries = []
+        for age_category_index, age_category in enumerate(age_bucket["age_categories"]):
+            for timeseries_index, (x_date, deaths) in enumerate(acm_by_category[age_category]):
+                if age_category_index == 0:
+                    bucket_deaths_timeseries.append([x_date, deaths])
+                else:
+                    item = bucket_deaths_timeseries[timeseries_index]
+                    assert x_date == item[0]
+                    item[1] += deaths
+        year_series = {}
+        for x_date, deaths in bucket_deaths_timeseries:
+            year, week, _ = x_date.isocalendar()
+            if year < 2000:
+                continue
+            population = 0
+            if year not in population_by_year_and_age:
+                population_year_key = max(population_by_year_and_age.keys())
+            else:
+                population_year_key = year
+            for age_key, age_item in population_by_year_and_age[population_year_key].items():
+                if isinstance(age_key, int):
+                    if age_bucket["age_start"] <= age_key and (age_bucket["age_end"] is None or age_key <= age_bucket["age_end"]):
+                        population += age_item[0]
+            mortality = deaths / (population / 1000000.0)
+            if year not in year_series:
+                year_series[year] = {
+                    "x": [],
+                    "y": [],
+                }
+            assert week not in year_series[year]["x"]
+            assert 1 <= week <= 53
+            year_series[year]["x"].append(week)
+            year_series[year]["y"].append(mortality)
+        age_bucket["year_series"] = year_series
+
+    xticks = [x for x in range(1, 54, 2)]
+    fig, ((ax1, ax2), (ax3, ax4), (ax5, ax6)) = plt.subplots(3, 2, figsize=(PAPER_WIDTH_IN, 6))
+    all_axes = (ax1, ax2, ax3, ax4, ax5, ax6)
+    for ax, age_bucket in zip(all_axes, age_buckets):
+        ax.set_xticks(xticks)
+        for year in range(2000, 2010):
+            ax.plot(age_bucket["year_series"][year]["x"], age_bucket["year_series"][year]["y"], color="#dae2ef", linewidth=0.3, zorder=3)
+        for year in range(2010, 2020):
+            ax.plot(age_bucket["year_series"][year]["x"], age_bucket["year_series"][year]["y"], color="#8ba8c8", linewidth=0.3, zorder=3)
+        ax.plot(age_bucket["year_series"][2020]["x"], age_bucket["year_series"][2020]["y"], color="#2165ac", linewidth=0.9, zorder=3)
+        ax.plot(age_bucket["year_series"][2021]["x"], age_bucket["year_series"][2021]["y"], color="#b1182c", linewidth=0.9, zorder=3)
+        ax.set_ylim(bottom=0, top=None, auto=True)
+        ax.set_xlim(1, 53)
+        ax.tick_params(labelsize=4)
+        for label in ax.get_xticklabels():
+            label.set_horizontalalignment('center')
+        ax.text(0.00, 1.01, age_bucket["name"], fontsize=9, horizontalalignment="left", verticalalignment="bottom", transform=ax.transAxes)
+        ax.text(-0.085, 0.5, "Viikoittain kuolleet per miljoona", transform=ax.transAxes, fontsize=6, rotation=90,
+                horizontalalignment="center", verticalalignment="center")
+        ax.text(-0.03, -0.02, "Viikko", fontsize=5, horizontalalignment="right", verticalalignment="top", transform=ax.transAxes)
+    fig.subplots_adjust(left=0.05, right=0.98, top=0.97, bottom=0.05)
+    save_fig(fig, "figures/weekly_deaths_per_age_per_1M_THL")
+
+    fig, ((ax1, ax2), (ax3, ax4), (ax5, ax6)) = plt.subplots(3, 2, figsize=(PAPER_WIDTH_IN, 6))
+    all_axes = (ax1, ax2, ax3, ax4, ax5, ax6)
+    colors = plt.cm.gist_rainbow(numpy.linspace(0,1,22))
+    def _year_to_color(year):
+        return colors[year-2000]
+    for ax, age_bucket in zip(all_axes, age_buckets):
+        ax.set_xticks(xticks)
+        for year in range(2000, 2022):
+            age_bucket["year_series"][year]["y_avg"] = calculate_moving_average(age_bucket["year_series"][year]["y"], 7)
+        for year in range(2000, 2010):
+            ax.plot(age_bucket["year_series"][year]["x"], age_bucket["year_series"][year]["y_avg"], 
+                    c=_year_to_color(year), linewidth=0.3, zorder=3)
+        for year in range(2010, 2020):
+            ax.plot(age_bucket["year_series"][year]["x"], age_bucket["year_series"][year]["y_avg"], 
+                    c=_year_to_color(year), linewidth=0.3, zorder=3)
+        ax.plot(age_bucket["year_series"][2020]["x"], age_bucket["year_series"][2020]["y_avg"], 
+                c=_year_to_color(2020), linewidth=1.5, zorder=3)
+        ax.plot(age_bucket["year_series"][2021]["x"], age_bucket["year_series"][2021]["y_avg"], 
+                c="#ff4444", linewidth=1.5, zorder=3)
+        ax.set_ylim(bottom=0, top=None, auto=True)
+        ax.set_xlim(1, 53)
+        ax.tick_params(labelsize=4)
+        for label in ax.get_xticklabels():
+            label.set_horizontalalignment('center')
+        ax.text(0.00, 1.01, age_bucket["name"], fontsize=9, horizontalalignment="left", verticalalignment="bottom", transform=ax.transAxes)
+        ax.text(-0.085, 0.5, "Viikoittain kuolleet per miljoona", transform=ax.transAxes, fontsize=6, rotation=90,
+                horizontalalignment="center", verticalalignment="center")
+        ax.text(-0.03, -0.02, "Viikko", fontsize=5, horizontalalignment="right", verticalalignment="top", transform=ax.transAxes)
+    fig.subplots_adjust(left=0.05, right=0.98, top=0.97, bottom=0.05)
+    save_fig(fig, "figures/weekly_deaths_per_age_per_1M_improved")
+    #plt.show(block=True)
+    plt.close(fig)
+
 def plot_raw_acm(acm_raw_x, acm_raw_x_date, acm_raw_y, auto_limits):
     fig, ax = plt.subplots(1, 1, figsize=(PAPER_WIDTH_IN, 1.2))
     #ax.plot(deaths_x, deaths_y, color="red", linewidth=DEFAULT_LINEWIDTH, linestyle="-")
@@ -2652,6 +2783,7 @@ def main():
         print("%d\t%d" % (year, round(get_model_yearly_mortality(baseline_fn, year))))
     plot_population_forecast_vs_model(finland_population_forecast, baseline_fn)
     plot_monthly_deaths_per_100k(finland_deaths_and_population_by_month, finland_covid_data)
+    plot_weekly_deaths_per_age_per_1M(finland_population_by_year_and_age, finland_acm_by_category)
     plot_raw_acm(acm_raw_x, acm_raw_x_date, acm_raw_y, auto_limits)
     plot_acm_baseline_trend(acm_raw_x, acm_raw_x_date, acm_raw_y,
                              acm_averaged_x_date, acm_averaged_x_date, acm_averaged_y,
@@ -2693,7 +2825,7 @@ def main():
     sys.exit(0)
 
     all_euromomo_countries = set()
-    for d, item in euromomo_data:
+    for _, item in euromomo_data:
         all_euromomo_countries.update(item.keys())
     for country in sorted(all_euromomo_countries):
         country_euromomo_data = [(d, item[country]) for d, item in euromomo_data if item.get(country)]
