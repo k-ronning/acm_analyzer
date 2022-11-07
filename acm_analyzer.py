@@ -76,7 +76,7 @@ EXCESS_MORTALITY_FILL_COLOR = "#ff2222"
 LOW_MORTALITY_FILL_COLOR = "C6"
 BASELINE_PLOT_HEIGHT = 1.1
 BLUE_COLOR = "#3366ee"
-ACM_CUSTOM_YLIM = (850, 1300)
+ACM_CUSTOM_YLIM = (800, 1320)
 ESTIMATION_PAST_YEARS=10
 BASELINE_PLOT_START_DATE = BASELINE_START_DATE
 BASELINE_PLOT_END_DATE = datetime.date(2022, 12, 31)
@@ -533,7 +533,7 @@ def parse_finland_deaths_by_month_csv(csv_file):
     heading_line = all_lines[2].strip()
     heading_cells = heading_line.split(";")
     assert heading_cells[0] == '"Vuosi"'
-    assert heading_cells[1] == '"Kuukaudet yhteensä Kuolleet"'
+    assert heading_cells[1] == '"Koko vuosi Kuolleet"'
     assert heading_cells[2] == '"Tammikuu Kuolleet"'
     assert heading_cells[-1] == '"Joulukuu Kuolleet"'
     result = []
@@ -1174,15 +1174,19 @@ def plot_population_forecast_vs_model(population_forecast, baseline_fn):
     plt.close(fig)
 
 def plot_monthly_deaths_per_100k(deaths_and_population_by_month, covid_data):
-    months_x = numpy.array(range(1, 13))
-    by_month = dict(((x, []) for x in months_x))
+    months_x = numpy.array(range(1, 37))
+    dates_x = numpy.array([datetime.date(2020+(x-1)//12, (x-1) % 12 + 1, 1) for x in months_x])
+    by_month = dict(((x, []) for x in range(1, 13)))
+    by_month_2020 = dict()
     by_month_2021 = dict()
     by_month_2022 = dict()
     for month_item in deaths_and_population_by_month:
         year = month_item["year"]
         month = month_item["month"]
-        if year < 2021:
+        if year < 2020:
             by_month[month].append(month_item)
+        elif year == 2020:
+            by_month_2020[month] = month_item
         elif year == 2021:
             by_month_2021[month] = month_item
         elif year == 2022:
@@ -1191,9 +1195,10 @@ def plot_monthly_deaths_per_100k(deaths_and_population_by_month, covid_data):
     max_y = []
     min80pc_y = []
     max80pc_y = []
-    line2021_y = []
-    line2022_y = []
-    for month in months_x:
+    max_x = None
+    line_y = []
+    for month_x in months_x:
+        month = 1 + ((month_x-1) % 12)
         month_items = by_month[month]
         month_deaths = list(map(lambda x: x["deaths_per_100k"], month_items))
         month_deaths.sort()
@@ -1203,11 +1208,40 @@ def plot_monthly_deaths_per_100k(deaths_and_population_by_month, covid_data):
         idx90pc = idx10pc + round(0.8*len(month_deaths))
         min80pc_y.append(month_deaths[idx10pc])
         max80pc_y.append(month_deaths[idx90pc])
-        item2021 = by_month_2021.get(month)
-        line2021_y.append(item2021["deaths_per_100k"] if item2021 is not None else None)
-        item2022 = by_month_2022.get(month)
-        line2022_y.append(item2022["deaths_per_100k"] if item2022 is not None else None)
-    line_covid_2021_y = []
+        if month_x <= 12:
+            item = by_month_2020.get(month)
+            line_y.append(item["deaths_per_100k"] if item is not None else None)
+            if item is not None:
+                max_x = month_x
+        elif 12 < month_x <= 24:
+            item = by_month_2021.get(month)
+            line_y.append(item["deaths_per_100k"] if item is not None else None)
+            if item is not None:
+                max_x = month_x
+        elif 24 < month_x <= 36:
+            item = by_month_2022.get(month)
+            line_y.append(item["deaths_per_100k"] if item is not None else None)
+            if item is not None:
+                max_x = month_x
+    line_covid_y = []
+    # 2020
+    cur_month = None
+    cur_month_sum = None
+    for x_date, covid_deaths, covid_cases, covid_tests in covid_data:
+        if x_date.year != 2020:
+            continue
+        if cur_month is None or x_date.month != cur_month:
+            if cur_month_sum is not None:
+                population = by_month_2020[cur_month]["population"]
+                line_covid_y.append(cur_month_sum / (population / 100000))
+            cur_month = x_date.month
+            cur_month_sum = 0
+        cur_month_sum += covid_deaths
+    assert cur_month_sum is not None
+    assert cur_month == 12
+    population = by_month_2020[cur_month]["population"]
+    line_covid_y.append(cur_month_sum / (population / 100000))
+    # 2021
     cur_month = None
     cur_month_sum = None
     for x_date, covid_deaths, covid_cases, covid_tests in covid_data:
@@ -1216,37 +1250,66 @@ def plot_monthly_deaths_per_100k(deaths_and_population_by_month, covid_data):
         if cur_month is None or x_date.month != cur_month:
             if cur_month_sum is not None:
                 population = by_month_2021[cur_month]["population"]
-                line_covid_2021_y.append(cur_month_sum / (population / 100000))
+                line_covid_y.append(cur_month_sum / (population / 100000))
             cur_month = x_date.month
             cur_month_sum = 0
         cur_month_sum += covid_deaths
     assert cur_month_sum is not None
     assert cur_month == 12
     population = by_month_2021[cur_month]["population"]
-    line_covid_2021_y.append(cur_month_sum / (population / 100000))
-    assert len(line_covid_2021_y) == 12
-    fig, ax = plt.subplots(1, 1, figsize=(COLUMN_WIDTH_IN, 1.5))
+    line_covid_y.append(cur_month_sum / (population / 100000))
+    # 2022
+    cur_month = None
+    cur_month_sum = None
+    for x_date, covid_deaths, covid_cases, covid_tests in covid_data:
+        if x_date.year != 2022:
+            continue
+        if cur_month is None or x_date.month != cur_month:
+            if cur_month_sum is not None:
+                if cur_month not in by_month_2022:
+                    continue
+                population = by_month_2022[cur_month]["population"]
+                line_covid_y.append(cur_month_sum / (population / 100000))
+            cur_month = x_date.month
+            cur_month_sum = 0
+        cur_month_sum += covid_deaths
+    assert cur_month_sum is not None
+    if cur_month in by_month_2022:
+        population = by_month_2022[cur_month]["population"]
+        line_covid_y.append(cur_month_sum / (population / 100000))
+    line_covid_corrected_y = [x * 0.6 for x in line_covid_y]
+    fig, ax = plt.subplots(1, 1, figsize=(PAPER_WIDTH_IN, 1.5))
     ax.set_ylim(0, 120)
-    ax.xaxis.set_major_locator(matplotlib.ticker.MultipleLocator(1))
-    minmax_fill = ax.fill_between(months_x, max_y, min_y, label="Min-max 1990-2020", 
+    ax.set_xlim(min(dates_x), max(dates_x[:len(line_y)]))
+    ax.xaxis.set_major_locator(matplotlib.dates.YearLocator())
+    ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%Y"))
+    ax.xaxis.set_minor_locator(matplotlib.dates.MonthLocator())
+    ax.xaxis.set_minor_formatter(matplotlib.dates.DateFormatter("%m"))
+    minmax_fill = ax.fill_between(dates_x, max_y, min_y, label="Min-max 1990-2019", 
                                   facecolor="C0", linewidth=0.05, interpolate=True,
-                                  alpha=0.4, edgecolor=None)
-    minmax80pc_fill = ax.fill_between(months_x, max80pc_y, min80pc_y, label="80%", 
+                                  alpha=0.25, edgecolor=None)
+    minmax80pc_fill = ax.fill_between(dates_x, max80pc_y, min80pc_y, label="80%", 
                                       facecolor="C0", linewidth=0.05, interpolate=True,
                                       alpha=1, edgecolor=None)
-    line_2021, = ax.plot(months_x, line2021_y, label="2021", color="C1", marker='D', markersize=2, linewidth=DEFAULT_LINEWIDTH, zorder=10)
-    #line_2022, = ax.plot(months_x, line2022_y, label="2022", color="C4", marker='*', markersize=2, linewidth=DEFAULT_LINEWIDTH, zorder=10)
-    line_covid_2021, = ax.plot(months_x, line_covid_2021_y, label="2021 korona", color="C1", marker='o', markersize=1, linewidth=DEFAULT_LINEWIDTH, zorder=10)
-    ax.legend(handles=[minmax_fill, minmax80pc_fill, line_2021, line_covid_2021],
+    line, = ax.plot(dates_x[:len(line_y)], line_y, label="Kuolleet", color="C1", marker='D', markersize=2, linewidth=DEFAULT_LINEWIDTH, zorder=10)
+    line_covid, = ax.plot(dates_x[:len(line_covid_corrected_y)], line_covid_corrected_y, label="Koronaan kuolleet (-40%)", color="C1", marker='o', markersize=1, linewidth=DEFAULT_LINEWIDTH, zorder=10)
+    for label in ax.get_xticklabels():
+        label.set_horizontalalignment('center')
+    ax.tick_params(axis="x", pad=2, labelsize=7, labelrotation=0, direction="out", 
+                   reset=True, top=False, bottom=True, left=True, right=True,
+                   which="major")
+    ax.tick_params(axis="x", pad=2, labelsize=6, labelrotation=0, direction="out", 
+                   reset=True, top=False, bottom=True, left=True, right=True,
+                   which="minor")
+    ax.tick_params(axis="y", direction="out", reset=False, left=True, right=False, which="both")
+    ax.legend(handles=[minmax_fill, minmax80pc_fill, line, line_covid],
               loc="upper left", bbox_to_anchor=(0, 1.15), ncol=4, fontsize=7,
               borderpad=0.3, handletextpad=0.25, columnspacing=1, frameon=True, fancybox=False, 
               shadow=False, facecolor="white", framealpha=1.0, borderaxespad=0.05)
     ax_ylabel_transform = matplotlib.transforms.blended_transform_factory(fig.transFigure, ax.transAxes)
-    ax.text(0.02, 0.5, "Kuolleet per 100 000", transform=ax_ylabel_transform, fontsize=7, rotation=90,
+    ax.text(0.01, 0.5, "Kuolleet per 100 000", transform=ax_ylabel_transform, fontsize=7, rotation=90,
             horizontalalignment="center", verticalalignment="center")
-    ax.text(0.005, -0.035, "Kuukausi", transform=ax_ylabel_transform, fontsize=7,
-            horizontalalignment="left", verticalalignment="top")
-    fig.subplots_adjust(left=0.095, right=0.99, top=0.88, bottom=0.09)
+    fig.subplots_adjust(left=0.055, right=0.99, top=0.86, bottom=0.11)
     save_fig(fig, "figures/monthly_deaths_per_100k")
     #plt.show(block=True)
     plt.close(fig)
@@ -1394,9 +1457,9 @@ def plot_raw_acm(acm_raw_x, acm_raw_x_date, acm_raw_y, auto_limits):
     acm_1yr_y = calculate_moving_average(acm_raw_y, 52)
     acm_2yr_y = calculate_moving_average(acm_raw_y, 52*2)
     acm_3yr_y = calculate_moving_average(acm_raw_y, 52*3)
-    #ax.plot(acm_raw_x_date, acm_1yr_y, color="C1", linewidth=0.5, linestyle="solid", zorder=10)
+    ax.plot(acm_raw_x_date, acm_1yr_y, color="C1", linewidth=0.5, linestyle="solid", zorder=10)
     #ax.plot(acm_raw_x_date, acm_2yr_y, color="C1", linewidth=0.5, linestyle="solid", zorder=11)
-    ax.plot(acm_raw_x_date, acm_3yr_y, color="C1", linewidth=0.5, linestyle="solid", zorder=12)
+    #ax.plot(acm_raw_x_date, acm_3yr_y, color="C1", linewidth=0.5, linestyle="solid", zorder=12)
     fig.subplots_adjust(left=0.04, right=0.995, top=0.965, bottom=0.105)
     save_fig(fig, "figures/acm_raw")
     #plt.show(block=True)
@@ -1651,7 +1714,7 @@ def plot_combined_baseline_subplots(acm_raw_x, acm_raw_x_date, acm_raw_y,
     ax1.scatter(baseline_average_x_date, baseline_average_y, color="white", s=4.0, zorder=5)
     for index, (x, y) in enumerate(zip(baseline_average_x_date, baseline_average_y)):
         label = ("$p_{%d}$=%.1f" % (index+1, y)).replace(".", ",")
-        ax1.annotate(label, xy=(x + datetime.timedelta(days=(index-3) * 80), y-145), 
+        ax1.annotate(label, xy=(x + datetime.timedelta(days=(index-3) * 80), y+40), 
                      textcoords='data', fontsize=7, horizontalalignment="center")
     if acm_estimate_x_date is not None and acm_estimate_y is not None:
         ax1.scatter(acm_estimate_x_date[1:], acm_estimate_y[1:], color="black", s=10.0, zorder=4)
@@ -1706,8 +1769,8 @@ def plot_combined_baseline_subplots(acm_raw_x, acm_raw_x_date, acm_raw_y,
                loc=(0.055, 0.51), ncol=5, fontsize=7,
                borderpad=0.3, handletextpad=0.25, labelspacing=0.4, frameon=False, fancybox=False, 
                shadow=False, facecolor="white", framealpha=1.0)
-    ax2.annotate('Anomalia', xy=(datetime.date(2022, 1, 1), 1100), xycoords='data',
-                 xytext=(0.965, 0.35), textcoords='axes fraction', 
+    ax2.annotate('Anomalia', xy=(datetime.date(2021, 9, 1), 1175), xycoords='data',
+                 xytext=(0.84, 0.85), textcoords='axes fraction', 
                  arrowprops={ "width": 0.25, "shrink": 0, "connectionstyle": "arc3", "headlength": 2.0, "headwidth": 2.5, "edgecolor": "none", "facecolor": "black", },
                  horizontalalignment='center', verticalalignment='top', fontsize=7)
     fig.text(0.01, 0.5, "Viikoittain kuolleiden lkm", rotation="vertical", 
@@ -1844,10 +1907,10 @@ def plot_yearly_cumulative_mortality(all_cause_mortality, baseline_fn, covid_dat
     acm_lookup = dict(((date, deaths) for date, deaths in all_cause_mortality))
     covid_data_lookup = dict(((x[0], x) for x in covid_data))
     fig, ax = plt.subplots(1, 1, figsize=(COLUMN_WIDTH_IN, 2.3))
-    plt.ylim(-1800, 4000)
+    plt.ylim(-1800, 5000)
     plt.xlim(1, 52)
     week_labels = []
-    for year_idx, year in enumerate(range(BASELINE_START_DATE.year, 2022)):
+    for year_idx, year in enumerate(range(BASELINE_START_DATE.year, 2023)):
         cumulative_deaths_x_list = []
         cumulative_deaths = 0
         cumulative_deaths_ex_covid = 0
@@ -1911,7 +1974,7 @@ def plot_yearly_cumulative_mortality(all_cause_mortality, baseline_fn, covid_dat
     ax.legend(loc="upper left", ncol=1, bbox_to_anchor=(1.02,1), fontsize=7, borderpad=0.25, labelspacing=0.135, 
               frameon=True, fancybox=False, shadow=False, facecolor="white", framealpha=1.0, edgecolor="0.5",
               borderaxespad=0)
-    fig.text(0.85, 0.12, # 0.91, 0.10, 
+    fig.text(0.85, 0.04, # 0.91, 0.10, 
              "*) korona-\n    kuolemat\n    vähennetty", 
              horizontalalignment="left", fontsize=6, transform=fig.transFigure)
     week_num = start_week
@@ -1964,8 +2027,8 @@ def plot_all_time_cumulative_excess_mortality(all_cause_mortality, baseline_fn):
                       ["cumulative_excess_mortality_x", "cumulative_excess_mortality_x_date", "cumulative_excess_mortality_y"],
                       cumulative_excess_mortality_x, cumulative_excess_mortality_x_date, cumulative_excess_mortality_y)
     fig, ax = plt.subplots(1, 1, figsize=(COLUMN_WIDTH_IN, 2))
-    plt.ylim(-1500, 4000)
-    ax.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(500))
+    plt.ylim(-2000, 8000)
+    ax.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(1000))
     plt.xlim(min(cumulative_excess_mortality_x_date) - datetime.timedelta(days=160), max(cumulative_excess_mortality_x_date) + datetime.timedelta(days=int(0.8*365)))
     fig.autofmt_xdate(rotation=45, ha="right", which="both")
     plt.grid(True)
@@ -1994,14 +2057,32 @@ def plot_all_time_cumulative_excess_mortality(all_cause_mortality, baseline_fn):
 
     plt.close(fig)
 
-def plot_covid_cases_and_deaths(covid_data):
+def plot_covid_cases_and_deaths(covid_data, excess_mortality_x_date, excess_mortality_y):
+    excess_mortality_lookup = dict([(x, y) for x, y in zip(excess_mortality_x_date, excess_mortality_y)])
     covid_x_list = []
     covid_x_date_list = []
     covid_deaths_y_list = []
     covid_cases_y_list = []
     covid_tests_y_list = []
+    summer_2020_covid_deaths_sum = 0
     summer_2021_covid_deaths_sum = 0
+    summer_2022_covid_deaths_sum = 0
+    summer_2020_excess_mortality_sum = 0
+    summer_2021_excess_mortality_sum = 0
+    summer_2022_excess_mortality_sum = 0
     for x_date, covid_deaths, covid_cases, covid_tests in covid_data:
+        if x_date >= datetime.date(2020, 6, 1) and x_date < datetime.date(2020, 8, 1):
+            excess_mortality = excess_mortality_lookup[x_date]
+            summer_2020_covid_deaths_sum += covid_deaths
+            summer_2020_excess_mortality_sum += excess_mortality
+        if x_date >= datetime.date(2021, 6, 1) and x_date < datetime.date(2021, 8, 1):
+            excess_mortality = excess_mortality_lookup[x_date]
+            summer_2021_covid_deaths_sum += covid_deaths
+            summer_2021_excess_mortality_sum += excess_mortality
+        if x_date >= datetime.date(2022, 6, 1) and x_date < datetime.date(2022, 8, 1):
+            excess_mortality = excess_mortality_lookup[x_date]
+            summer_2022_covid_deaths_sum += covid_deaths
+            summer_2022_excess_mortality_sum += excess_mortality
         if x_date < datetime.date(2021, 1, 1):
             continue
         x = (x_date - T0_DATE).days
@@ -2010,18 +2091,24 @@ def plot_covid_cases_and_deaths(covid_data):
         covid_deaths_y_list.append(covid_deaths)
         covid_cases_y_list.append(covid_cases)
         covid_tests_y_list.append(covid_tests)
-        if x_date >= datetime.date(2021, 6, 1) and x_date < datetime.date(2021, 8, 1):
-            summer_2021_covid_deaths_sum += covid_deaths
     covid_x = numpy.array(covid_x_list)
     covid_x_date = numpy.array(covid_x_date_list)
     covid_deaths_y = numpy.array(covid_deaths_y_list)
     covid_cases_y = numpy.array(covid_cases_y_list)
     covid_tests_y = numpy.array(covid_tests_y_list)
-    print("Summer 2021 covid deaths: %d" % (summer_2021_covid_deaths_sum,))
-
-    fig1, ax1 = plt.subplots(1, 1, figsize=(COLUMN_WIDTH_IN, 0.8))
-    ax1.set_ylim(0, 120)
-    ax1.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(20))
+    print("Summer 2020: %d covid deaths, %d corrected covid deaths, %d excess mortality" % (summer_2020_covid_deaths_sum,
+                                                                                            int(summer_2020_covid_deaths_sum * 0.6),
+                                                                                            summer_2020_excess_mortality_sum))
+    print("Summer 2021: %d covid deaths, %d corrected covid deaths, %d excess mortality" % (summer_2021_covid_deaths_sum,
+                                                                                            int(summer_2021_covid_deaths_sum * 0.6),
+                                                                                            summer_2021_excess_mortality_sum))
+    print("Summer 2022: %d covid deaths, %d corrected covid deaths, %d excess mortality" % (summer_2022_covid_deaths_sum,
+                                                                                            int(summer_2022_covid_deaths_sum * 0.6),
+                                                                                            summer_2022_excess_mortality_sum))
+ 
+    fig1, ax1 = plt.subplots(1, 1, figsize=(COLUMN_WIDTH_IN, 1.1))
+    ax1.set_ylim(0, 275)
+    ax1.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(50))
     fig1.autofmt_xdate(rotation=0, ha="right", which="both")
     ax1.set_xlim(datetime.date(2021, 1, 1), datetime.date(2022, 1, 1))
     ax1.xaxis.set_major_locator(matplotlib.dates.YearLocator())
@@ -2035,19 +2122,19 @@ def plot_covid_cases_and_deaths(covid_data):
     ax1.scatter(covid_x_date, covid_deaths_y, color="C1", s=1.0)
     ax1.tick_params(axis="x", which="minor", reset=True, pad=2, labelsize=7, labelrotation=0, direction="out", 
                     top=False, bottom=True, labeltop=False, labelbottom=True)
-    ax1.tick_params(axis="x", which="major",
-                    top=False, bottom=True, labeltop=False, labelbottom=False)
+    ax1.tick_params(axis="x", which="major", pad=11, # labelrotation=90,
+                    top=False, bottom=True, labeltop=False, labelbottom=True)
     ax1.tick_params(axis="y", direction="out", reset=False, left=True, right=False, which="both")
     #legend = plt.legend(handles=[deaths_line], loc='upper left',
     #                    bbox_to_anchor=(0.01, 0.99), fontsize=6,
     #                    borderpad=0.3, labelspacing=0.2, frameon=True, fancybox=False, 
     #                    shadow=False, facecolor="white", framealpha=1.0, edgecolor="black")
-    fig1.subplots_adjust(left=0.08, right=0.985, top=0.955, bottom=0.165)
-    save_fig(fig1, "figures/covid_deaths")
+    fig1.subplots_adjust(left=0.08, right=0.985, top=0.85, bottom=0.25)
+    #save_fig(fig1, "figures/covid_deaths")
     #legend.remove()
 
     ax1b = ax1.twinx()
-    ax1b.set_ylim(0, 75000)
+    ax1b.set_ylim(0, 55000)
     ax1b.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(10000))
     ax1b.set_xlim(datetime.date(2021, 1, 1), max(covid_x_date) + datetime.timedelta(days=4))
     ax1b.xaxis.set_major_locator(matplotlib.dates.YearLocator())
@@ -2064,7 +2151,7 @@ def plot_covid_cases_and_deaths(covid_data):
                         bbox_to_anchor=(0.01, 0.99), fontsize=6,
                         borderpad=0.3, labelspacing=0.2, frameon=True, fancybox=False, 
                         shadow=False, facecolor="white", framealpha=1.0, edgecolor="black")
-    fig1.subplots_adjust(left=0.08, right=0.89, top=0.99, bottom=0.12)
+    fig1.subplots_adjust(left=0.08, right=0.89, top=0.96, bottom=0.22)
     save_fig(fig1, "figures/covid_cases_and_deaths")
     plt.close(fig1)
 
@@ -2213,9 +2300,9 @@ def plot_euromomo_zscores(country_euromomo_data, output_file_name, output_cumula
     ax4.add_patch(matplotlib.patches.Rectangle((rect_start_x, 0.07), rect_end_x-rect_start_x, 0.8, transform=rect_transform, 
                                                linewidth=DEFAULT_LINEWIDTH, color="C3", fill=False, clip_on=False, zorder=100))
     rect_start_x = (datetime.date(2021, 5, 1)-xlim_start).days / (xlim_end - xlim_start).days
-    rect_end_x = (datetime.date(2022, 3, 1)-xlim_start).days / (xlim_end - xlim_start).days
+    rect_end_x = (datetime.date(2022, 11, 1)-xlim_start).days / (xlim_end - xlim_start).days
     rect_transform = matplotlib.transforms.blended_transform_factory(ax3.transAxes, ax3.transData)
-    rect_patch = matplotlib.patches.Rectangle((rect_start_x, 0.1), rect_end_x-rect_start_x, 3.8, transform=rect_transform, 
+    rect_patch = matplotlib.patches.Rectangle((rect_start_x, -0.1), rect_end_x-rect_start_x, 4.2, transform=rect_transform, 
                                               linewidth=DEFAULT_LINEWIDTH, color="C3", fill=False, clip_on=False, zorder=100)
     ax4.add_patch(rect_patch)
     fig3.subplots_adjust(left=0.11, right=0.99, top=0.94, bottom=0.06, wspace=0, hspace=0.12)
@@ -2294,7 +2381,7 @@ def plot_highlighted_euromomo_zscores(country_euromomo_data):
              horizontalalignment="center", verticalalignment="center")
     # Rectangles
     rect_start_x = (get_date_from_isoweek(2021, 24)-xlim_start).days / (xlim_end - xlim_start).days
-    rect_end_x = (get_date_from_isoweek(2022, 13)-xlim_start).days / (xlim_end - xlim_start).days
+    rect_end_x = (get_date_from_isoweek(2022, 42)-xlim_start).days / (xlim_end - xlim_start).days
     rect_patch = matplotlib.patches.Rectangle((rect_start_x, 0), rect_end_x-rect_start_x, 1, transform=ax3.transAxes, 
                                               linewidth=None, color="#ffaaaa", fill=True, clip_on=True, zorder=0)
     ax3.add_patch(rect_patch)
@@ -2744,7 +2831,7 @@ def main():
     with open("Finland/Finland population forecast.csv", "rt", encoding="iso-8859-1") as csv_file:
         finland_population_forecast = parse_finland_population_forecast_csv(csv_file)
         assert len(finland_population_forecast) > 10
-    with open("EuroMoMo/Euromomo all countries z-scores 2022-04-20.csv", "rt", encoding="utf-8") as csv_file:
+    with open("EuroMoMo/Euromomo all countries z-scores 2022-11-05.csv", "rt", encoding="utf-8") as csv_file:
         euromomo_data = parse_euromomo_zscores_csv(csv_file)
         assert len(euromomo_data) > 50
         finland_euromomo_data = [(d, item["Finland"]) for d, item in euromomo_data if item.get("Finland") is not None]
@@ -2811,7 +2898,7 @@ def main():
     # yearly cumulative mortality from spring
     plot_yearly_cumulative_mortality(target_acm, baseline_fn, finland_covid_data, start_week=16)
     plot_all_time_cumulative_excess_mortality(target_acm, baseline_fn)
-    plot_covid_cases_and_deaths(finland_covid_data)
+    plot_covid_cases_and_deaths(finland_covid_data, excess_mortality_x_date, excess_mortality_y)
     plot_euromomo_zscores(finland_euromomo_data,
                           "figures/euromomo_zscores",
                           "figures/euromomo_zscores_cumulative",
@@ -2821,9 +2908,7 @@ def main():
     plot_euromomo_correlation(excess_mortality_x, excess_mortality_x_date, excess_mortality_y, finland_euromomo_data)
     plot_processcontrol_deaths_by_halfyears(finland_deaths_and_population_by_month_extended)
     #plot_population_normalization(finland_both_life_expectancy_fn, finland_male_life_expectancy_fn, finland_female_life_expectancy_fn, finland_population_by_year_and_age, baseline_trend_fn)
-
     sys.exit(0)
-
     all_euromomo_countries = set()
     for _, item in euromomo_data:
         all_euromomo_countries.update(item.keys())
