@@ -1357,18 +1357,18 @@ def plot_weekly_deaths_per_age_per_1M(population_by_year_and_age, acm_by_categor
     for ax, age_bucket in zip(all_axes, age_buckets):
         ax.set_xticks(xticks)
         for year in range(2000, 2022):
-            age_bucket["year_series"][year]["y_avg"] = calculate_moving_average(age_bucket["year_series"][year]["y"], 7)
+            age_bucket["year_series"][year]["y_avg"] = calculate_moving_average(age_bucket["year_series"][year]["y"], 10)
         for year in range(2000, 2010):
             ax.plot(age_bucket["year_series"][year]["x"], age_bucket["year_series"][year]["y_avg"], 
-                    c=_year_to_color(year), linewidth=0.3, zorder=3)
+                    c=_year_to_color(year), linewidth=0.5, zorder=3)
         for year in range(2010, 2020):
             ax.plot(age_bucket["year_series"][year]["x"], age_bucket["year_series"][year]["y_avg"], 
-                    c=_year_to_color(year), linewidth=0.3, zorder=3)
+                    c=_year_to_color(year), linewidth=0.5, zorder=3)
         ax.plot(age_bucket["year_series"][2020]["x"], age_bucket["year_series"][2020]["y_avg"], 
-                c=_year_to_color(2020), linewidth=1.5, zorder=3)
+                c=_year_to_color(2020), linewidth=1.5, zorder=4)
         ax.plot(age_bucket["year_series"][2021]["x"], age_bucket["year_series"][2021]["y_avg"], 
-                c="#ff4444", linewidth=1.5, zorder=3)
-        ax.set_ylim(bottom=0, top=None, auto=True)
+                c="#ff4444", linewidth=1.5, zorder=4)
+        #ax.set_ylim(bottom=0, top=None, auto=True)
         ax.set_xlim(1, 53)
         ax.tick_params(labelsize=4)
         for label in ax.get_xticklabels():
