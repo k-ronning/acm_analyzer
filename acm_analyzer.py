@@ -1557,6 +1557,7 @@ def plot_acm_baseline_trend(acm_raw_x, acm_raw_x_date, acm_raw_y,
     fig.autofmt_xdate(rotation=45, ha="right", which="both")
     plt.grid(True)
     ax.xaxis.set_major_locator(matplotlib.dates.YearLocator())
+    ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%Y"))
     ax.tick_params(axis="x", pad=0.5, labelsize=7, labelrotation=60)
     for label in ax.get_xticklabels():
         label.set_horizontalalignment('center')
@@ -1596,6 +1597,7 @@ def plot_acm_baseline_fn(acm_raw_x, acm_raw_x_date, acm_raw_y,
     fig.autofmt_xdate(rotation=45, ha="right", which="both")
     plt.grid(True)
     ax.xaxis.set_major_locator(matplotlib.dates.YearLocator())
+    ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%Y"))
     ax.tick_params(axis="x", pad=0.5, labelsize=7, labelrotation=60)
     for label in ax.get_xticklabels():
         label.set_horizontalalignment('center')
@@ -1660,6 +1662,7 @@ def plot_acm_baseline_trend_and_fn(acm_raw_x, acm_raw_x_date, acm_raw_y,
     fig.autofmt_xdate(rotation=45, ha="right", which="both")
     plt.grid(True)
     ax.xaxis.set_major_locator(matplotlib.dates.YearLocator())
+    ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%Y"))
     ax.tick_params(axis="x", pad=2.5, labelsize=7, labelrotation=None)
     for label in ax.get_xticklabels():
         label.set_horizontalalignment('center')
@@ -1726,6 +1729,7 @@ def plot_combined_baseline_subplots(acm_raw_x, acm_raw_x_date, acm_raw_y,
     fig.autofmt_xdate(rotation=45, ha="right", which="both")
     ax1.grid(True)
     ax1.xaxis.set_major_locator(matplotlib.dates.YearLocator())
+    ax1.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%Y"))
     ax1.tick_params(axis="x", pad=0.5, labelsize=7, labelrotation=60)
     for label in ax1.get_xticklabels():
         label.set_horizontalalignment('center')
@@ -1756,6 +1760,7 @@ def plot_combined_baseline_subplots(acm_raw_x, acm_raw_x_date, acm_raw_y,
                                           facecolor="C6", label="Alikuolleisuus", **fill_params)
     ax2.grid(True)
     ax2.xaxis.set_major_locator(matplotlib.dates.YearLocator())
+    ax2.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%Y"))
     ax2.tick_params(axis="x", pad=0.5, labelsize=7, labelrotation=60)
     for label in ax2.get_xticklabels():
         label.set_horizontalalignment('center')
@@ -1809,6 +1814,7 @@ def plot_excess_mortality(excess_mortality_x, excess_mortality_x_date, excess_mo
     ax.grid(True)
     ax.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(100))
     ax.xaxis.set_major_locator(matplotlib.dates.YearLocator())
+    ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%Y"))
     ax.tick_params(axis="y", labelleft=True, labelright=True, left=True, right=True)
     ax.tick_params(axis="x", pad=2.5, labelsize=7, labelrotation=None)
     for label in ax.get_xticklabels():
@@ -1914,8 +1920,10 @@ def plot_yearly_cumulative_mortality(all_cause_mortality, baseline_fn, covid_dat
         cumulative_deaths_x_list = []
         cumulative_deaths = 0
         cumulative_deaths_ex_covid = 0
+        cumulative_deaths_ex_covid_corrected = 0
         cumulative_deaths_y_list = []
         cumulative_deaths_ex_covid_y_list = []
+        cumulative_deaths_ex_covid_corrected_y_list = []
         any_covid_deaths = False
         for week_index in range(0, 52):
             week = week_index + start_week
@@ -1942,12 +1950,17 @@ def plot_yearly_cumulative_mortality(all_cause_mortality, baseline_fn, covid_dat
                 covid_deaths = covid_data_item[1]
             else:
                 covid_deaths = 0
+            covid_deaths_corrected = 0.6 * covid_deaths
             excess_deaths_ex_covid = excess_deaths - covid_deaths
             cumulative_deaths_ex_covid += excess_deaths_ex_covid
+            excess_deaths_ex_covid_corrected = excess_deaths - covid_deaths_corrected
+            cumulative_deaths_ex_covid_corrected += excess_deaths_ex_covid_corrected
             cumulative_deaths_ex_covid_y_list.append(cumulative_deaths_ex_covid)
+            cumulative_deaths_ex_covid_corrected_y_list.append(cumulative_deaths_ex_covid_corrected)
         cumulative_deaths_x = numpy.array(cumulative_deaths_x_list)
         cumulative_deaths_y = numpy.array(cumulative_deaths_y_list)
         cumulative_deaths_ex_covid_y = numpy.array(cumulative_deaths_ex_covid_y_list)
+        cumulative_deaths_ex_covid_corrected_y = numpy.array(cumulative_deaths_ex_covid_corrected_y_list)
         if year < 2000:
             color = "C%d" % (year_idx % 10,)
             linestyle = "dotted"
@@ -1969,14 +1982,14 @@ def plot_yearly_cumulative_mortality(all_cause_mortality, baseline_fn, covid_dat
                  linewidth=linewidth, linestyle=linestyle, label=label)
         if year >= 2020 and any_covid_deaths:
             covid_label = "%s*" % (label,)
-            ax.plot(cumulative_deaths_x, cumulative_deaths_ex_covid_y, color=color, 
+            ax.plot(cumulative_deaths_x, cumulative_deaths_ex_covid_corrected_y, color=color, 
                      linewidth=1.2, linestyle="dashed", label=covid_label)
     ax.legend(loc="upper left", ncol=1, bbox_to_anchor=(1.02,1), fontsize=7, borderpad=0.25, labelspacing=0.135, 
               frameon=True, fancybox=False, shadow=False, facecolor="white", framealpha=1.0, edgecolor="0.5",
               borderaxespad=0)
-    fig.text(0.85, 0.04, # 0.91, 0.10, 
-             "*) korona-\n    kuolemat\n    vähennetty", 
-             horizontalalignment="left", fontsize=6, transform=fig.transFigure)
+    fig.text(0.81, 0.04, # 0.91, 0.10, 
+             "*) korona-\n    kuolemat (-40%)\n    vähennetty", 
+             horizontalalignment="left", fontsize=5, transform=fig.transFigure)
     week_num = start_week
     week_pos = 1
     xticks = []
@@ -2033,6 +2046,7 @@ def plot_all_time_cumulative_excess_mortality(all_cause_mortality, baseline_fn):
     fig.autofmt_xdate(rotation=45, ha="right", which="both")
     plt.grid(True)
     ax.xaxis.set_major_locator(matplotlib.dates.YearLocator())
+    ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%Y"))
     ax.axhline(linewidth=1, color="black")
     ax.tick_params(axis="x", pad=0.5, labelsize=7, labelrotation=60)
     for label in ax.get_xticklabels():
@@ -2266,11 +2280,11 @@ def plot_euromomo_zscores(country_euromomo_data, output_file_name, output_cumula
     ax3b = ax3.twiny()
     ax4b = ax4.twiny()
     for ax in (ax3b, ax4b):
-        ax.tick_params(axis="x", which="major", reset=True, labelsize=7, pad=0,
+        ax.tick_params(axis="x", which="major", reset=False, labelsize=7, pad=0,
                        labeltop=True, labelbottom=False, top=False, bottom=False)
     for ax in (ax3, ax4):
-        ax.tick_params(axis="x", which="major", reset=True, labeltop=False, labelbottom=False, top=False, bottom=False)
-    ax4.tick_params(axis="x", which="minor", reset=True, labelsize=7, pad=2,
+        ax.tick_params(axis="x", which="major", reset=False, labeltop=False, labelbottom=False, top=False, bottom=False)
+    ax4.tick_params(axis="x", which="minor", reset=False, labelsize=7, pad=2,
                     labeltop=False, labelbottom=True, top=False, bottom=True)
     for ax in (ax3b, ax4b):
         ax.set_xlim(xlim_start, xlim_end)
@@ -2363,9 +2377,9 @@ def plot_highlighted_euromomo_zscores(country_euromomo_data):
     #ax3.plot(zscore_x_date, zscore_avg_y, linewidth=0.6, color="C6", linestyle="solid")
     # Show year labels in top x-axis
     ax3b = ax3.twiny()
-    ax3b.tick_params(axis="x", which="major", reset=True, labelsize=7, pad=0,
+    ax3b.tick_params(axis="x", which="major", reset=False, labelsize=7, pad=0,
                      labeltop=True, labelbottom=False, top=False, bottom=False)
-    ax3.tick_params(axis="x", which="major", reset=True, labeltop=False, labelbottom=False, top=False, bottom=False)
+    ax3.tick_params(axis="x", which="major", reset=False, labeltop=False, labelbottom=False, top=False, bottom=False)
     ax3b.set_xlim(xlim_start, xlim_end)
     ax3b.grid(which="both", visible=False)
     ax3b.xaxis.set_major_locator(matplotlib.dates.YearLocator(month=7))
@@ -2517,7 +2531,7 @@ def plot_euromomo_correlation(excess_mortality_x, excess_mortality_x_date, exces
 
     fig, ax1 = plt.subplots(1, 1, figsize=(COLUMN_WIDTH_IN, 1.3))
     ax1.set_xlim(-4, 5)
-    ylim_min, ylim_max = -120, 250
+    ylim_min, ylim_max = -150, 270
     ax1.set_ylim(ylim_min, ylim_max)
     assert min(correlation_excess_mortality) > ylim_min
     assert max(correlation_excess_mortality) < ylim_max
@@ -2609,6 +2623,7 @@ def plot_processcontrol_deaths_by_halfyears(deaths_and_population_by_month):
     ax1.set_xlim(min(deaths_by_halfyears_x_date_list)-datetime.timedelta(days=400), 
                  max(deaths_by_halfyears_x_date_list)+datetime.timedelta(days=2500))
     ax1.xaxis.set_major_locator(matplotlib.dates.YearLocator(5))
+    ax1.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%Y"))
     for label in ax1.get_xticklabels():
         label.set_horizontalalignment('center')
     ax1.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(0.02))
