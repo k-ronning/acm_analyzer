@@ -1,4 +1,3 @@
-import datetime
 import dateutil
 import platform
 import isoweek
@@ -18,16 +17,16 @@ import os
 import sys
 
 def init_latex():
-    global Y2020_COLOR_OFFSET
+    global Y2021_COLOR_OFFSET
     if False:
         plt.style.use('seaborn')
-        Y2020_COLOR_OFFSET = 1
+        Y2021_COLOR_OFFSET = 1
     elif False:
         plt.style.use('ggplot')
-        Y2020_COLOR_OFFSET = 0
+        Y2021_COLOR_OFFSET = 0
     else:
         plt.style.use('bmh')
-        Y2020_COLOR_OFFSET = 0
+        Y2021_COLOR_OFFSET = 0
 
     # Documentation:
     # https://matplotlib.org/stable/tutorials/introductory/customizing.html#the-default-matplotlibrc-file
@@ -60,10 +59,10 @@ def init_latex():
 DAYS_IN_YEAR_EXACT = 365.24
 WEEKS_IN_YEAR_EXACT = DAYS_IN_YEAR_EXACT / 7
 BASELINE_START_DATE = datetime.date(2008, 1, 1)
-BASELINE_CUTOFF_DATE = datetime.date(2020, 1, 1)
+BASELINE_CUTOFF_DATE = datetime.date(2021, 1, 1)
 BASELINE_INTERVAL = datetime.timedelta(days=365*3)
-T0_DATE = datetime.date(2020, 1, 1)
-T0_DATETIME64 = numpy.datetime64("2020-01-01")
+T0_DATE = datetime.date(2021, 1, 1)
+T0_DATETIME64 = numpy.datetime64("2021-01-01")
 YEAR_WEEK_RE = re.compile(r'"(\d\d\d\d)W(\d\d)\*?"')
 PAPER_WIDTH_PT = 483.7
 PAPER_WIDTH_IN = PAPER_WIDTH_PT / 72.27
@@ -348,6 +347,78 @@ def parse_finland_thl_covid_data_csv(csv_file):
             assert False, "Unkown line type: %s" % (line_type,)
     return out_tuples
 
+# Parse CSV file downloaded from:
+# https://sampo.thl.fi/pivot/prod/fi/epirapo/covid19case/fact_epirapo_covid19case?row=dateweek20200101-509030&column=measure-444833.445356.492118.816930.816957.&fo=1
+# 
+# Click: Vie taulukko > CSV-tiedostoon
+#
+def parse_finland_thl_verified_covid_data_csv(csv_file):
+    out_tuples = []
+    all_lines = list(csv_file.readlines())
+    heading_line = all_lines[0].strip()
+    assert heading_line == "Mittari;Aika;val"
+    cur_year = None
+    cur_week = None
+    cur_begin_date = None
+    cur_covid_cases = None
+    cur_covid_tests = None
+    cur_covid_caused_deaths = None
+    for line_idx, line in enumerate(all_lines[1:]):
+        line_no = line_idx+2
+        line = line.strip()
+        if not line or ";Kaikki ajat;" in line:
+            break
+        cells = line.split(";")
+        line_type = cells[0]
+        year_week_match = THL_YEAR_WEEK_RE.fullmatch(cells[1])
+        assert year_week_match is not None
+        year = int(year_week_match.group(1))
+        week = int(year_week_match.group(2))
+        begin_date = get_date_from_isoweek(year, week)
+        if line_type == "Tapausten lukumäärä":
+            cur_covid_cases = int(cells[2] or 0)
+            assert cur_year == None
+            assert cur_week == None
+            assert cur_begin_date == None
+            cur_year = year
+            cur_week = week
+            cur_begin_date = begin_date
+        elif line_type == "Testausmäärä":
+            assert cur_year == year, "Year %s != %s on line %d" % (cur_year, year, line_no)
+            assert cur_week == week
+            assert cur_begin_date == begin_date
+            cur_covid_tests = int(cells[2] or 0)
+        elif line_type == "Koronaan ajallisesti liittyvät kuolemat (30 vrk), tartuntatautirekisteri":
+            continue
+        elif line_type == "Koronasta johtuvat kuolemat, kuolintodistus (alustava tieto)":
+            assert cur_year == year
+            assert cur_week == week
+            assert cur_begin_date == begin_date
+            assert cur_covid_cases is not None
+            assert cur_covid_tests is not None
+            cur_covid_caused_deaths = int(cells[2] or 0)
+        elif line_type == "Kuolemat joissa korona myötävaikuttavana tekijänä, kuolintodistus (alustava tieto)":
+            assert cur_year == year
+            assert cur_week == week
+            assert cur_begin_date == begin_date
+            assert cur_covid_cases is not None
+            assert cur_covid_tests is not None
+            assert cur_covid_tests is not None
+            assert cur_covid_caused_deaths is not None
+            covid_contributory_deaths = int(cells[2] or 0)
+            covid_caused_or_contributory_deaths = cur_covid_caused_deaths + covid_contributory_deaths
+            out_tuples.append((begin_date, cur_covid_caused_deaths, cur_covid_cases, cur_covid_tests,
+                               cur_covid_caused_deaths, covid_contributory_deaths))
+            cur_year = None
+            cur_week = None
+            cur_begin_date = None
+            cur_covid_cases = None
+            cur_covid_tests = None
+            cur_covid_caused_deaths = None
+        else:
+            assert False, "Unkown line type: %s" % (line_type,)
+    return out_tuples
+
 EUROMOMO_YEAR_WEEK_RE = re.compile(r"(\d\d\d\d)-(\d\d)")
 
 # Parse CSV file downloaded from:
@@ -448,7 +519,7 @@ def parse_finland_tilastokeskus_population_csv(csv_file):
 # 
 # Click: Lataa taulukko > Lataa puolipiste-eroteltu csv-tiedosto (otsikollinen)
 #
-def parse_finland_population_forecast_csv(csv_file):
+def parse_finland_deaths_forecast_csv(csv_file):
     all_lines = list(csv_file.readlines())
     heading_line = all_lines[2].strip()
     heading_cells = heading_line.split(";")
@@ -581,7 +652,31 @@ def parse_finland_population_by_month_csv(csv_file):
         result.append((year, population))
     return result
 
-def calculate_moving_average(arr, w):
+def calculate_moving_average(arr, w, position="left"):
+    results = []
+    for i in range(len(arr)):
+        if position == "left":
+            lower_i = i-(w-1)
+            upper_i = i
+        elif position == "center":
+            lower_i = i-((w-w//2)-1)
+            upper_i = i+w//2
+        elif position == "right":
+            lower_i = i
+            upper_i = i+(w-1)
+        else:
+            raise ValueError("Unknown position: %s" % (position,))
+        assert lower_i <= upper_i
+        if lower_i < 0 or upper_i >= len(arr):
+            results.append(None)
+            continue
+        window = arr[lower_i:upper_i+1]
+        assert len(window) == w
+        result = sum(window) / len(window)
+        results.append(result)
+    return numpy.array(results)
+
+def calculate_variable_window_moving_average(arr, w):
     results = []
     for i in range(len(arr)):
         lower_i = max(0, i-((w-w//2)-1))
@@ -591,20 +686,20 @@ def calculate_moving_average(arr, w):
         results.append(result)
     return numpy.array(results)
 
-def test_calculate_moving_average():
-    assert repr(list(calculate_moving_average([], 3))) == repr([])
+def test_calculate_variable_window_moving_average():
+    assert repr(list(calculate_variable_window_moving_average([], 3))) == repr([])
     source2 = [1.0]
-    result2 = list(calculate_moving_average(source2, 3))
+    result2 = list(calculate_variable_window_moving_average(source2, 3))
     expected2 = [1.0]
     assert repr(result2) == repr(expected2), \
         "%s not equal to %s" % (repr(result2), repr(expected2))
-    assert repr(list(calculate_moving_average([1.0, 3.0], 3))) == repr([2.0, 2.0])
+    assert repr(list(calculate_variable_window_moving_average([1.0, 3.0], 3))) == repr([2.0, 2.0])
     source4 = [90.0, 40.0, 95.0, 119.0, 102.0, 118.0, 33.0, 100.0, 4.0, 46.0, 109.0, 34.0, 25.0, 125.0, 120.0]
-    result4 = list(calculate_moving_average(numpy.array(source4), 5))
+    result4 = list(calculate_variable_window_moving_average(numpy.array(source4), 5))
     expected4 = [75.0, 86.0, 89.2, 94.8, 93.4, 94.4, 71.4, 60.2, 58.4, 58.6, 43.6, 67.8, 82.6, 76.0, 90.0]
     assert repr(result4) == repr(expected4), \
         "%s not equal to %s" % (repr(result4), repr(expected4))
-test_calculate_moving_average()
+test_calculate_variable_window_moving_average()
 
 def map_datetime_to_x(d):
     if isinstance(d, numpy.ndarray):
@@ -659,7 +754,7 @@ def calculate_acm_baseline_method1(all_cause_mortality, all_cause_mortality_esti
 
     acm_averaged_x = acm_raw_x
     acm_averaged_x_date = acm_raw_x_date
-    acm_averaged_y = calculate_moving_average(acm_raw_y, 7)
+    acm_averaged_y = calculate_variable_window_moving_average(acm_raw_y, 7)
 
     baseline_average_x_list = []
     baseline_average_x_date_list = []
@@ -793,7 +888,7 @@ def calculate_acm_baseline_method2(all_cause_mortality, all_cause_mortality_esti
 
     acm_averaged_x = acm_raw_x
     acm_averaged_x_date = acm_raw_x_date
-    acm_averaged_y = calculate_moving_average(acm_raw_y, 7)
+    acm_averaged_y = calculate_variable_window_moving_average(acm_raw_y, 7)
 
     baseline_point_x_list = []
     baseline_point_x_date_list = []
@@ -1001,7 +1096,7 @@ def combine_deaths_by_month(finland_deaths_by_month_since_1945, finland_deaths_a
             date = datetime.date(year, month, 1)
             key = (year, month)
             deaths = deaths_by_year_and_month.get(key)
-            if year < datetime.date.today().year:
+            if year < BASELINE_PLOT_END_DATE.year:
                 assert deaths is not None, "Year %d month %d not in result" % (year, month)
             if deaths is not None:
                 result.append({
@@ -1051,7 +1146,7 @@ def get_model_yearly_mortality(baseline_fn, year):
     y, err = scipy.integrate.quad(baseline_fn, a, b)
     return round(y/7)
 
-def plot_population_forecast_vs_model(population_forecast, baseline_fn):
+def plot_deaths_forecast_vs_model(deaths_forecast, baseline_fn):
     plot_x_list = []
     plot_model_list = []
     plot_actual_list = []
@@ -1070,7 +1165,7 @@ def plot_population_forecast_vs_model(population_forecast, baseline_fn):
     plot_fc2019_inactive_list = []
     plot_fc2021_inactive_list = []
     forecast_years = (2021, 2019, 2018, 2015, 2012, 2009, 2007)
-    for year_values in sorted(population_forecast, key=lambda x: x["year"]):
+    for year_values in sorted(deaths_forecast, key=lambda x: x["year"]):
         year = year_values["year"]
         plot_x_list.append(year)
         model_deaths = round(get_model_yearly_mortality(baseline_fn, year))
@@ -1169,7 +1264,7 @@ def plot_population_forecast_vs_model(population_forecast, baseline_fn):
     fig.text(0.995, 0.22, "*) 2021: ennakkotieto", horizontalalignment="right", fontsize=6, transform=fig.transFigure)
     fig.subplots_adjust(left=0.095, right=0.76, top=0.97, bottom=0.15)
     plot_model_cutoff(fig, ax, xpos=2019.5, ypos=0.18)
-    save_fig(fig, "figures/population_forecast_vs_model")
+    save_fig(fig, "figures/deaths_forecast_vs_model")
     #plt.show(block=True)
     plt.close(fig)
 
@@ -1227,7 +1322,7 @@ def plot_monthly_deaths_per_100k(deaths_and_population_by_month, covid_data):
     # 2020
     cur_month = None
     cur_month_sum = None
-    for x_date, covid_deaths, covid_cases, covid_tests in covid_data:
+    for x_date, covid_deaths, covid_cases, covid_tests, _, _ in covid_data:
         if x_date.year != 2020:
             continue
         if cur_month is None or x_date.month != cur_month:
@@ -1244,7 +1339,7 @@ def plot_monthly_deaths_per_100k(deaths_and_population_by_month, covid_data):
     # 2021
     cur_month = None
     cur_month_sum = None
-    for x_date, covid_deaths, covid_cases, covid_tests in covid_data:
+    for x_date, covid_deaths, covid_cases, covid_tests, _, _ in covid_data:
         if x_date.year != 2021:
             continue
         if cur_month is None or x_date.month != cur_month:
@@ -1261,7 +1356,7 @@ def plot_monthly_deaths_per_100k(deaths_and_population_by_month, covid_data):
     # 2022
     cur_month = None
     cur_month_sum = None
-    for x_date, covid_deaths, covid_cases, covid_tests in covid_data:
+    for x_date, covid_deaths, covid_cases, covid_tests, _, _ in covid_data:
         if x_date.year != 2022:
             continue
         if cur_month is None or x_date.month != cur_month:
@@ -1292,7 +1387,7 @@ def plot_monthly_deaths_per_100k(deaths_and_population_by_month, covid_data):
                                       facecolor="C0", linewidth=0.05, interpolate=True,
                                       alpha=1, edgecolor=None)
     line, = ax.plot(dates_x[:len(line_y)], line_y, label="Kuolleet", color="C1", marker='D', markersize=2, linewidth=DEFAULT_LINEWIDTH, zorder=10)
-    line_covid, = ax.plot(dates_x[:len(line_covid_corrected_y)], line_covid_corrected_y, label="Koronaan kuolleet (-40%)", color="C1", marker='o', markersize=1, linewidth=DEFAULT_LINEWIDTH, zorder=10)
+    line_covid, = ax.plot(dates_x[:len(line_covid_corrected_y)], line_covid_corrected_y, label="Koronaan kuolleet", color="C1", marker='o', markersize=1, linewidth=DEFAULT_LINEWIDTH, zorder=10)
     for label in ax.get_xticklabels():
         label.set_horizontalalignment('center')
     ax.tick_params(axis="x", pad=2, labelsize=7, labelrotation=0, direction="out", 
@@ -1363,6 +1458,28 @@ def plot_weekly_deaths_per_age_per_1M(population_by_year_and_age, acm_by_categor
                     item = bucket_deaths_timeseries[timeseries_index]
                     assert x_date == item[0]
                     item[1] += deaths
+        age_bucket["time_series"] = { 
+            "x": [],
+            "deaths_by_1M_cohort": [],
+        }
+        for x_date, deaths in bucket_deaths_timeseries:
+            year = x_date.year
+            population = 0
+            if year not in population_by_year_and_age:
+                population_year_key = max(population_by_year_and_age.keys())
+                print("Warning: year %d not in population_by_year_and_age" % (year,))
+                assert abs(population_year_key - year) <= 1
+            else:
+                population_year_key = year
+            for age_key, age_item in population_by_year_and_age[population_year_key].items():
+                if isinstance(age_key, int):
+                    if age_bucket["age_start"] <= age_key and (age_bucket["age_end"] is None or age_key <= age_bucket["age_end"]):
+                        population += age_item[0]
+            assert population > 0
+            mortality = deaths / (population / 1000000.0)
+            print("%s\t%d\t%d\t%f" % (x_date, deaths, population, mortality))
+            age_bucket["time_series"]["x"].append(x_date)
+            age_bucket["time_series"]["deaths_by_1M_cohort"].append(mortality)
         year_series = {}
         for x_date, deaths in bucket_deaths_timeseries:
             year, week, _ = x_date.isocalendar()
@@ -1398,8 +1515,14 @@ def plot_weekly_deaths_per_age_per_1M(population_by_year_and_age, acm_by_categor
             ax.plot(age_bucket["year_series"][year]["x"], age_bucket["year_series"][year]["y"], color="#dae2ef", linewidth=0.3, zorder=3)
         for year in range(2010, 2020):
             ax.plot(age_bucket["year_series"][year]["x"], age_bucket["year_series"][year]["y"], color="#8ba8c8", linewidth=0.3, zorder=3)
-        ax.plot(age_bucket["year_series"][2020]["x"], age_bucket["year_series"][2020]["y"], color="#2165ac", linewidth=0.9, zorder=3)
-        ax.plot(age_bucket["year_series"][2021]["x"], age_bucket["year_series"][2021]["y"], color="#b1182c", linewidth=0.9, zorder=3)
+        for year in range(2020, BASELINE_PLOT_END_DATE.year+1):
+            if year == 2020:
+                color = "#2165ac"
+            elif year == 2021:
+                color = "#b1182c"
+            else:
+                color = None
+            ax.plot(age_bucket["year_series"][year]["x"], age_bucket["year_series"][year]["y"], color=color, linewidth=0.9, zorder=3)
         ax.set_ylim(bottom=0, top=None, auto=True)
         ax.set_xlim(1, 53)
         ax.tick_params(labelsize=4)
@@ -1419,18 +1542,25 @@ def plot_weekly_deaths_per_age_per_1M(population_by_year_and_age, acm_by_categor
         return colors[year-2000]
     for ax, age_bucket in zip(all_axes, age_buckets):
         ax.set_xticks(xticks)
-        for year in range(2000, 2022):
-            age_bucket["year_series"][year]["y_avg"] = calculate_moving_average(age_bucket["year_series"][year]["y"], 10)
+        for year in range(2000, BASELINE_PLOT_END_DATE.year+1):
+            age_bucket["year_series"][year]["y_avg"] = calculate_variable_window_moving_average(age_bucket["year_series"][year]["y"], 10)
         for year in range(2000, 2010):
             ax.plot(age_bucket["year_series"][year]["x"], age_bucket["year_series"][year]["y_avg"], 
                     c=_year_to_color(year), linewidth=0.5, zorder=3)
         for year in range(2010, 2020):
             ax.plot(age_bucket["year_series"][year]["x"], age_bucket["year_series"][year]["y_avg"], 
                     c=_year_to_color(year), linewidth=0.5, zorder=3)
-        ax.plot(age_bucket["year_series"][2020]["x"], age_bucket["year_series"][2020]["y_avg"], 
-                c=_year_to_color(2020), linewidth=1.5, zorder=4)
-        ax.plot(age_bucket["year_series"][2021]["x"], age_bucket["year_series"][2021]["y_avg"], 
-                c="#ff4444", linewidth=1.5, zorder=4)
+        for year in range(2020, BASELINE_PLOT_END_DATE.year+1):
+            if year == 2020:
+                color =_year_to_color(2020) 
+            elif year == 2021:
+                color = "#ff4444"
+            elif year == 2022:
+                color = "#4444ff"
+            else:
+                color = None
+            ax.plot(age_bucket["year_series"][year]["x"], age_bucket["year_series"][year]["y_avg"], 
+                    c=color, linewidth=1.5, zorder=4)
         #ax.set_ylim(bottom=0, top=None, auto=True)
         ax.set_xlim(1, 53)
         ax.tick_params(labelsize=4)
@@ -1443,6 +1573,48 @@ def plot_weekly_deaths_per_age_per_1M(population_by_year_and_age, acm_by_categor
     fig.subplots_adjust(left=0.05, right=0.98, top=0.97, bottom=0.05)
     save_fig(fig, "figures/weekly_deaths_per_age_per_1M_improved")
     #plt.show(block=True)
+
+    colors = ["C3", "C6", "C7", "C5", "C2", "C4", "C8", "C1"]
+    fig, ax1 = plt.subplots(1, 1, figsize=(PAPER_WIDTH_IN, 4))
+    plot_handles = []
+    for age_bucket, color in zip(age_buckets, colors):
+        y = age_bucket["time_series"]["deaths_by_1M_cohort"]
+        y_avg = calculate_moving_average(y, 10)
+        y_slow_avg = calculate_moving_average(y, 52, position="center")
+        plot_handle, = ax1.plot(age_bucket["time_series"]["x"], y_slow_avg, linewidth=0.8, zorder=3, color=color,
+                                label=age_bucket["name"])
+        plot_handles.append(plot_handle)
+        ax1.plot(age_bucket["time_series"]["x"], y, linewidth=0.2, color=color, zorder=4, alpha=0.5)
+    #fig.legend(handles=plot_handles, 
+    #           loc=(0.055, 0.95), ncol=len(age_buckets), fontsize=7,
+    #           borderpad=0.3, handletextpad=0.25, labelspacing=0.4, frameon=False, fancybox=False, 
+    #           shadow=False, facecolor="white", framealpha=1.0)
+    ax1.legend(handles=list(reversed(plot_handles)), loc='upper left', ncol=1, bbox_to_anchor=(1.01, 1), fontsize=8,
+               handletextpad=0.4, handlelength=0.5, borderpad=0.5, labelspacing=0.3, 
+               frameon=True, fancybox=False, shadow=False, facecolor="white", framealpha=1.0, edgecolor="0.5",
+               borderaxespad=0)
+    fig.autofmt_xdate(rotation=45, ha="right", which="both")
+    plt.grid(True)
+    ax1.set_xlim(BASELINE_PLOT_START_DATE, BASELINE_PLOT_END_DATE)
+    ax1.set_ylim(-100, 3000)
+    ax1.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(500))
+    ax1.xaxis.set_major_locator(matplotlib.dates.YearLocator())
+    ax1.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%Y"))
+    ax1.tick_params(axis="x", pad=0.5, labelsize=7, labelrotation=60)
+    for label in ax1.get_xticklabels():
+        label.set_horizontalalignment('center')
+    fig.text(0.5, 0.96, "Kuolleisuus ikäryhmittäin 2008-2022",
+             verticalalignment="center", horizontalalignment="center", 
+             fontsize=12, transform=fig.transFigure)
+    fig.text(0.01, 0.5, "Kuolleisuus per miljoona", rotation="vertical", 
+             verticalalignment="center", horizontalalignment="center", 
+             fontsize=7, transform=fig.transFigure)
+    fig.text(0.915, 0.67, "(52 viikon liukuva keskiarvo)", 
+             verticalalignment="center", horizontalalignment="center", 
+             fontsize=5, transform=fig.transFigure)
+    fig.subplots_adjust(left=0.07, right=0.84, top=0.92, bottom=0.06)
+    save_fig(fig, "figures/deaths_per_1M")
+    #plt.show(block=True)
     plt.close(fig)
 
 def plot_raw_acm(acm_raw_x, acm_raw_x_date, acm_raw_y, auto_limits):
@@ -1454,9 +1626,9 @@ def plot_raw_acm(acm_raw_x, acm_raw_x_date, acm_raw_y, auto_limits):
     if not auto_limits:
         ax.set_ylim(800, 1400)
     ax.plot(acm_raw_x_date, acm_raw_y, color="C0", linewidth=0.2, linestyle="solid", zorder=1, alpha=0.5)
-    acm_1yr_y = calculate_moving_average(acm_raw_y, 52)
-    acm_2yr_y = calculate_moving_average(acm_raw_y, 52*2)
-    acm_3yr_y = calculate_moving_average(acm_raw_y, 52*3)
+    acm_1yr_y = calculate_variable_window_moving_average(acm_raw_y, 52)
+    acm_2yr_y = calculate_variable_window_moving_average(acm_raw_y, 52*2)
+    acm_3yr_y = calculate_variable_window_moving_average(acm_raw_y, 52*3)
     ax.plot(acm_raw_x_date, acm_1yr_y, color="C1", linewidth=0.5, linestyle="solid", zorder=10)
     #ax.plot(acm_raw_x_date, acm_2yr_y, color="C1", linewidth=0.5, linestyle="solid", zorder=11)
     #ax.plot(acm_raw_x_date, acm_3yr_y, color="C1", linewidth=0.5, linestyle="solid", zorder=12)
@@ -1855,7 +2027,7 @@ def plot_excess_mortality(excess_mortality_x, excess_mortality_x_date, excess_mo
 
     excess_mortality_avg_x = excess_mortality_x
     excess_mortality_avg_x_date = excess_mortality_x_date
-    excess_mortality_avg_y = calculate_moving_average(excess_mortality_y, 7)
+    excess_mortality_avg_y = calculate_variable_window_moving_average(excess_mortality_y, 7)
     fig2, ax2 = plt.subplots(1, 1, figsize=(PAPER_WIDTH_IN, BASELINE_PLOT_HEIGHT))
     ax2.set_xlim(BASELINE_PLOT_START_DATE, BASELINE_PLOT_END_DATE)
     ax2.set_ylim(-120, 200)
@@ -1974,7 +2146,7 @@ def plot_yearly_cumulative_mortality(all_cause_mortality, baseline_fn, covid_dat
             linestyle = "solid"
             linewidth = 0.5
         else:
-            color = "C%d" % ((Y2020_COLOR_OFFSET + year - 2020) % 10,)
+            color = "C%d" % ((Y2021_COLOR_OFFSET + year - 2021) % 10,)
             linestyle = "solid"
             linewidth = 1.5
         label = str(year)
@@ -1988,7 +2160,7 @@ def plot_yearly_cumulative_mortality(all_cause_mortality, baseline_fn, covid_dat
               frameon=True, fancybox=False, shadow=False, facecolor="white", framealpha=1.0, edgecolor="0.5",
               borderaxespad=0)
     fig.text(0.81, 0.04, # 0.91, 0.10, 
-             "*) korona-\n    kuolemat (-40%)\n    vähennetty", 
+             "*) korona-\n    kuolemat\n    vähennetty", 
              horizontalalignment="left", fontsize=5, transform=fig.transFigure)
     week_num = start_week
     week_pos = 1
@@ -2054,12 +2226,12 @@ def plot_all_time_cumulative_excess_mortality(all_cause_mortality, baseline_fn):
     ax.plot(cumulative_excess_mortality_x_date, cumulative_excess_mortality_y, color="C1", linewidth=0.5, linestyle="-")
     ax.plot(cumulative_excess_mortality_x_date[-1], cumulative_excess_mortality_y[-1], 'o', ms=20, markerfacecolor='#ffaaaa', markeredgewidth=0, alpha=0.4)
     #plt.scatter(baseline_fn_x_date, baseline_fn_y, color="orange", s=3.0)
-    fig.subplots_adjust(bottom=0.11, top=0.975, left=0.095, right=0.99)
+    fig.subplots_adjust(bottom=0.11, top=0.975, left=0.095, right=0.985)
     plot_model_cutoff(fig, ax, ypos=0.09)
     save_fig(fig, "figures/all_time_cumulative_excess_mortality")
     #plt.show(block=True)
 
-    fig.subplots_adjust(bottom=0.11, top=0.92, left=0.095, right=0.99)
+    fig.subplots_adjust(bottom=0.11, top=0.92, left=0.095, right=0.985)
     ax_ylabel_transform = matplotlib.transforms.blended_transform_factory(fig.transFigure, ax.transAxes)
     ax.text(0.5, 1.02, "Kumuloitu ylikuolleisuus", transform=ax_ylabel_transform, fontsize=9,
             horizontalalignment="center", verticalalignment="bottom")
@@ -2084,7 +2256,7 @@ def plot_covid_cases_and_deaths(covid_data, excess_mortality_x_date, excess_mort
     summer_2020_excess_mortality_sum = 0
     summer_2021_excess_mortality_sum = 0
     summer_2022_excess_mortality_sum = 0
-    for x_date, covid_deaths, covid_cases, covid_tests in covid_data:
+    for x_date, covid_deaths, covid_cases, covid_tests, _, _ in covid_data:
         if x_date >= datetime.date(2020, 6, 1) and x_date < datetime.date(2020, 8, 1):
             excess_mortality = excess_mortality_lookup[x_date]
             summer_2020_covid_deaths_sum += covid_deaths
@@ -2199,7 +2371,7 @@ def plot_euromomo_zscores(country_euromomo_data, output_file_name, output_cumula
     zscore_x = numpy.array(zscore_x_list)
     zscore_x_date = numpy.array(zscore_x_date_list)
     zscore_y = numpy.array(zscore_y_list)
-    zscore_avg_y = calculate_moving_average(zscore_y, 7)
+    zscore_avg_y = calculate_variable_window_moving_average(zscore_y, 7)
     cumulative_zscore_x = numpy.array(cumulative_zscore_x_list)
     cumulative_zscore_x_date = numpy.array(cumulative_zscore_x_date_list)
     cumulative_zscore_y = numpy.array(cumulative_zscore_y_list)
@@ -2353,7 +2525,7 @@ def plot_highlighted_euromomo_zscores(country_euromomo_data):
     zscore_x = numpy.array(zscore_x_list)
     zscore_x_date = numpy.array(zscore_x_date_list)
     zscore_y = numpy.array(zscore_y_list)
-    zscore_avg_y = calculate_moving_average(zscore_y, 7)
+    zscore_avg_y = calculate_variable_window_moving_average(zscore_y, 7)
     cumulative_zscore_x = numpy.array(cumulative_zscore_x_list)
     cumulative_zscore_x_date = numpy.array(cumulative_zscore_x_date_list)
     cumulative_zscore_y = numpy.array(cumulative_zscore_y_list)
@@ -2444,7 +2616,7 @@ def plot_euromomo_vs_model_cumulative(excess_mortality_x, excess_mortality_x_dat
     zscore_x = numpy.array(zscore_x_list)
     zscore_x_date = numpy.array(zscore_x_date_list)
     zscore_y = numpy.array(zscore_y_list)
-    zscore_avg_y = calculate_moving_average(zscore_y, 7)
+    zscore_avg_y = calculate_variable_window_moving_average(zscore_y, 7)
     cumulative_zscore_x = numpy.array(cumulative_zscore_x_list)
     cumulative_zscore_x_date = numpy.array(cumulative_zscore_x_date_list)
     cumulative_zscore_y = numpy.array(cumulative_zscore_y_list)
@@ -2836,16 +3008,16 @@ def main():
     #with open("Finland population by year.csv", "rt", encoding="iso-8859-1") as csv_file:
     #    finland_population_by_year = parse_finland_population_by_month_csv(csv_file)
     #    assert len(finland_population_by_year) > 50
-    with open("Finland/Finland covid deaths.csv", "rt", encoding="utf-8") as csv_file:
-        finland_covid_data = parse_finland_thl_covid_data_csv(csv_file)
+    with open("Finland/Finland verified covid deaths.csv", "rt", encoding="utf-8") as csv_file:
+        finland_covid_data = parse_finland_thl_verified_covid_data_csv(csv_file)
         assert len(finland_covid_data) > 50
     with open("Finland/Finland Population by age.csv", "rt", encoding="iso-8859-1") as csv_file:
         finland_population_by_year_and_age = parse_finland_tilastokeskus_population_csv(csv_file)
         assert len(finland_population_by_year_and_age) > 10
         assert len(finland_population_by_year_and_age[2010]) > 50
-    with open("Finland/Finland population forecast.csv", "rt", encoding="iso-8859-1") as csv_file:
-        finland_population_forecast = parse_finland_population_forecast_csv(csv_file)
-        assert len(finland_population_forecast) > 10
+    with open("Finland/Finland deaths forecast.csv", "rt", encoding="iso-8859-1") as csv_file:
+        finland_deaths_forecast = parse_finland_deaths_forecast_csv(csv_file)
+        assert len(finland_deaths_forecast) > 10
     with open("EuroMoMo/Euromomo all countries z-scores 2022-11-05.csv", "rt", encoding="utf-8") as csv_file:
         euromomo_data = parse_euromomo_zscores_csv(csv_file)
         assert len(euromomo_data) > 50
@@ -2883,7 +3055,7 @@ def main():
     print("Year\tEstimated yearly mortality")
     for year in range(1990, 2025+1):
         print("%d\t%d" % (year, round(get_model_yearly_mortality(baseline_fn, year))))
-    plot_population_forecast_vs_model(finland_population_forecast, baseline_fn)
+    plot_deaths_forecast_vs_model(finland_deaths_forecast, baseline_fn)
     plot_monthly_deaths_per_100k(finland_deaths_and_population_by_month, finland_covid_data)
     plot_weekly_deaths_per_age_per_1M(finland_population_by_year_and_age, finland_acm_by_category)
     plot_raw_acm(acm_raw_x, acm_raw_x_date, acm_raw_y, auto_limits)
