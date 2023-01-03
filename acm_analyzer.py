@@ -653,6 +653,7 @@ def parse_finland_population_by_month_csv(csv_file):
     return result
 
 def calculate_moving_average(arr, w, position="left"):
+    assert w >= 3
     results = []
     for i in range(len(arr)):
         if position == "left":
@@ -672,7 +673,12 @@ def calculate_moving_average(arr, w, position="left"):
             continue
         window = arr[lower_i:upper_i+1]
         assert len(window) == w
-        result = sum(window) / len(window)
+        if w % 2 == 0:
+            # even length window
+            result = (0.5 * window[0] + sum(window[1:-1]) + 0.5 * window[-1]) / (len(window) - 1)
+        else:
+            # odd length window
+            result = sum(window) / len(window)
         results.append(result)
     return numpy.array(results)
 
@@ -1436,15 +1442,45 @@ def plot_weekly_deaths_per_age_per_1M(population_by_year_and_age, acm_by_categor
             "age_end": 69,
         },
         {
-            "name": "70-79 -vuotiaat",
-            "age_categories": ["70-74", "75-79",],
+            "name": "70-74 -vuotiaat",
+            "age_categories": ["70-74",],
             "age_start": 70,
+            "age_end": 74,
+        },
+        {
+            "name": "75-79 -vuotiaat",
+            "age_categories": ["75-79",],
+            "age_start": 75,
             "age_end": 79,
         },
         {
-            "name": "Yli 80-vuotiaat",
-            "age_categories": ["80-84", "85-89", "90-"],
+            "name": "80-84 -vuotiaat",
+            "age_categories": ["80-84",],
             "age_start": 80,
+            "age_end": 84,
+        },
+        {
+            "name": "85-89 -vuotiaat",
+            "age_categories": ["85-89",],
+            "age_start": 85,
+            "age_end": 89,
+        },
+        #{
+        #    "name": "70-79 -vuotiaat",
+        #    "age_categories": ["70-74", "75-79",],
+        #    "age_start": 70,
+        #    "age_end": 79,
+        #},
+        #{
+        #    "name": "80-89 -vuotiaat",
+        #    "age_categories": ["80-84", "85-89",],
+        #    "age_start": 80,
+        #    "age_end": None,
+        #},
+        {
+            "name": "Yli 90-vuotiaat",
+            "age_categories": ["90-"],
+            "age_start": 90,
             "age_end": None,
         },
     ]
@@ -1574,12 +1610,13 @@ def plot_weekly_deaths_per_age_per_1M(population_by_year_and_age, acm_by_categor
     save_fig(fig, "figures/weekly_deaths_per_age_per_1M_improved")
     #plt.show(block=True)
 
-    colors = ["C3", "C6", "C7", "C5", "C2", "C4", "C8", "C1"]
+    colors = ["C3", "C6", "C7", "C5", "C2", "C4", "C8", "C1", "C9"]
     fig, ax1 = plt.subplots(1, 1, figsize=(PAPER_WIDTH_IN, 4))
     plot_handles = []
-    for age_bucket, color in zip(age_buckets, colors):
+    for color_index, age_bucket in enumerate(age_buckets):
+        color = colors[color_index]
         y = age_bucket["time_series"]["deaths_by_1M_cohort"]
-        y_avg = calculate_moving_average(y, 10)
+        y_avg = calculate_moving_average(y, 10, position="center")
         y_slow_avg = calculate_moving_average(y, 52, position="center")
         plot_handle, = ax1.plot(age_bucket["time_series"]["x"], y_slow_avg, linewidth=0.8, zorder=3, color=color,
                                 label=age_bucket["name"])
@@ -1595,24 +1632,28 @@ def plot_weekly_deaths_per_age_per_1M(population_by_year_and_age, acm_by_categor
                borderaxespad=0)
     fig.autofmt_xdate(rotation=45, ha="right", which="both")
     plt.grid(True)
+    #ax1.set_xlim(datetime.date(2021, 1, 1), BASELINE_PLOT_END_DATE)
     ax1.set_xlim(BASELINE_PLOT_START_DATE, BASELINE_PLOT_END_DATE)
-    ax1.set_ylim(-100, 3000)
+    ax1.set_ylim(-100, 6000)
     ax1.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(500))
     ax1.xaxis.set_major_locator(matplotlib.dates.YearLocator())
+    ax1.xaxis.set_minor_locator(matplotlib.dates.MonthLocator())
     ax1.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%Y"))
+    ax1.xaxis.grid(True, which='minor')
+    ax1.xaxis.grid(True, which='major', color="black", linestyle="-")
     ax1.tick_params(axis="x", pad=0.5, labelsize=7, labelrotation=60)
     for label in ax1.get_xticklabels():
         label.set_horizontalalignment('center')
     fig.text(0.5, 0.96, "Kuolleisuus ikäryhmittäin 2008-2022",
              verticalalignment="center", horizontalalignment="center", 
              fontsize=12, transform=fig.transFigure)
+    fig.text(0.5, 0.925, "52 viikon keskitetty liukuva keskiarvo", 
+             verticalalignment="center", horizontalalignment="center", 
+             fontsize=7, transform=fig.transFigure)
     fig.text(0.01, 0.5, "Kuolleisuus per miljoona", rotation="vertical", 
              verticalalignment="center", horizontalalignment="center", 
              fontsize=7, transform=fig.transFigure)
-    fig.text(0.915, 0.67, "(52 viikon liukuva keskiarvo)", 
-             verticalalignment="center", horizontalalignment="center", 
-             fontsize=5, transform=fig.transFigure)
-    fig.subplots_adjust(left=0.07, right=0.84, top=0.92, bottom=0.06)
+    fig.subplots_adjust(left=0.07, right=0.84, top=0.90, bottom=0.06)
     save_fig(fig, "figures/deaths_per_1M")
     #plt.show(block=True)
     plt.close(fig)
