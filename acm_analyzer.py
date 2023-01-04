@@ -569,6 +569,8 @@ def parse_finland_deaths_and_population_by_month_csv(csv_file, trim_months_from_
     assert heading_cells[2] == '"Väkiluku"'
     result = []
     for line_idx, line in enumerate(all_lines[3:]):
+        if line == "\n":
+            break
         cells = line.strip().split(";")
         year_month_name = cells[0].strip('"').rstrip("*")
         year_s, month_s = year_month_name.split("M")
@@ -586,7 +588,7 @@ def parse_finland_deaths_and_population_by_month_csv(csv_file, trim_months_from_
             "deaths_per_100k": deaths / (population / 100000),
         }
         result.append(output)
-    return result[:-trim_months_from_end]
+    return result[:-trim_months_from_end] if trim_months_from_end > 0 else result
 
 # Parse CSV file downloaded from:
 # https://pxnet2.stat.fi/PXWeb/pxweb/fi/StatFin/StatFin__vrm__kuol/statfin_kuol_pxt_12ah.px/
@@ -1634,7 +1636,7 @@ def plot_weekly_deaths_per_age_per_1M(population_by_year_and_age, acm_by_categor
     plt.grid(True)
     #ax1.set_xlim(datetime.date(2021, 1, 1), BASELINE_PLOT_END_DATE)
     ax1.set_xlim(BASELINE_PLOT_START_DATE, BASELINE_PLOT_END_DATE)
-    ax1.set_ylim(-100, 6000)
+    ax1.set_ylim(-10, 6000)
     ax1.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(500))
     ax1.xaxis.set_major_locator(matplotlib.dates.YearLocator())
     ax1.xaxis.set_minor_locator(matplotlib.dates.MonthLocator())
@@ -2786,24 +2788,28 @@ def plot_processcontrol_deaths_by_halfyears(deaths_and_population_by_month):
     current_h1_counter = None
     current_h2_sum = None
     current_h2_counter = None
+    def _process_current_year():
+        assert current_year is not None
+        assert current_h1_sum is not None and current_h2_sum is not None
+        assert current_h1_sum > 0 and current_h2_sum > 0
+        assert current_h1_counter == 6, "Invalid h1 counter: %s" % (current_h1_counter,)
+        assert current_h2_counter == 6, "Invalid h2 counter: %s" % (current_h2_counter,)
+        data_date = datetime.date(current_year, 1, 1)
+        data_x = (data_date - T0_DATE).days
+        data_y = current_h2_sum / (current_h1_sum + current_h2_sum)
+        deaths_by_halfyears_x_list.append(data_x)
+        deaths_by_halfyears_x_date_list.append(data_date)
+        deaths_by_halfyears_y_list.append(data_y)
+        if data_date < T0_DATE:
+            dbhy_statistics_y.append(data_y)
+    month = None
     for month_item in deaths_and_population_by_month:
         year = month_item["year"]
         month = month_item["month"]
         deaths = month_item["deaths"]
         if month == 1:
             if current_year is not None:
-                assert current_h1_sum is not None and current_h2_sum is not None
-                assert current_h1_sum > 0 and current_h2_sum > 0
-                assert current_h1_counter == 6, "Invalid h1 counter: %s" % (current_h1_counter,)
-                assert current_h2_counter == 6, "Invalid h2 counter: %s" % (current_h2_counter,)
-                data_date = datetime.date(current_year, 1, 1)
-                data_x = (data_date - T0_DATE).days
-                data_y = current_h2_sum / (current_h1_sum + current_h2_sum)
-                deaths_by_halfyears_x_list.append(data_x)
-                deaths_by_halfyears_x_date_list.append(data_date)
-                deaths_by_halfyears_y_list.append(data_y)
-                if data_date < T0_DATE:
-                    dbhy_statistics_y.append(data_y)
+                _process_current_year()
             current_year = year
             current_h1_sum = 0
             current_h1_counter = 0
@@ -2815,12 +2821,16 @@ def plot_processcontrol_deaths_by_halfyears(deaths_and_population_by_month):
         if 1 <= month < 7:
             assert current_h2_sum is None
             assert current_h2_counter is None
+            assert current_h1_counter is not None
             current_h1_sum += deaths
             current_h1_counter += 1
         else:
             if current_h2_sum is not None:
+                assert current_h2_counter is not None
                 current_h2_sum += deaths
                 current_h2_counter += 1
+    if month == 12 and current_year is not None:
+        _process_current_year()
     deaths_by_halfyears_x = numpy.array(deaths_by_halfyears_x_list)
     deaths_by_halfyears_x_date = numpy.array(deaths_by_halfyears_x_date_list)
     deaths_by_halfyears_y = numpy.array(deaths_by_halfyears_y_list)
@@ -2852,7 +2862,7 @@ def plot_processcontrol_deaths_by_halfyears(deaths_and_population_by_month):
     #                    shadow=False, facecolor="white", framealpha=1.0, edgecolor="black")
     fig1.subplots_adjust(bottom=0.10, top=0.965, left=0.075, right=0.99)
 
-    for px, py in [(deaths_by_halfyears_x_date[-1], deaths_by_halfyears_y[-1])]:
+    for px, py in [(deaths_by_halfyears_x_date[-2], deaths_by_halfyears_y[-2])]:
         p_text = (r"%s: %.1f%% $(%+.1f\sigma)$" % (px.year, 100*py, (py - dbhy_average) / dbhy_stddev)).replace(".", ",")
         p_transform = matplotlib.transforms.offset_copy(ax1.transData, fig=fig1, x=0, y=2.5, units="points")
         bbox = {
@@ -3041,7 +3051,7 @@ def main():
                             ]
 
     with open("Finland/Finland population and deaths by month.csv", "rt", encoding="iso-8859-1") as csv_file:
-        finland_deaths_and_population_by_month = parse_finland_deaths_and_population_by_month_csv(csv_file, trim_months_from_end=1)
+        finland_deaths_and_population_by_month = parse_finland_deaths_and_population_by_month_csv(csv_file, trim_months_from_end=0)
         assert len(finland_deaths_and_population_by_month) > 50
     with open("Finland/Finland deaths by month.csv", "rt", encoding="iso-8859-1") as csv_file:
         finland_deaths_by_month_since_1945 = parse_finland_deaths_by_month_csv(csv_file)
