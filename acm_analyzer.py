@@ -17,6 +17,24 @@ import matplotlib.patches
 import os
 import sys
 
+LANG=None
+
+def get_figure_filename(name):
+    if LANG == "fi":
+        return f"figures/{name}"
+    elif LANG == "en":
+        return f"figures_en/{name}"
+    else:
+        raise Exception(f"unknown language: {LANG}")
+
+def T(fi, en):
+    if LANG == "fi":
+        return fi
+    elif LANG == "en":
+        return en
+    else:
+        raise Exception(f"unknown language: {LANG}")
+
 def init_latex():
     global Y2020_COLOR_OFFSET
     if False:
@@ -80,6 +98,10 @@ ACM_CUSTOM_YLIM = (850, 1300)
 ESTIMATION_PAST_YEARS=10
 BASELINE_PLOT_START_DATE = BASELINE_START_DATE
 BASELINE_PLOT_END_DATE = datetime.date(2022, 12, 31)
+
+def _matplotlib_bug_20149_workaround(axis):
+    axis._major_tick_kw["gridOn"] = True
+    axis._major_tick_kw["gridOn"] = False
 
 def get_date_from_isoweek(year, week):
     return isoweek.Week(year, week).thursday()
@@ -974,7 +996,7 @@ def calculate_life_expectancy_fn(country_life_expectancy):
     return both_life_expectancy_fn, male_life_expectancy_fn, female_life_expectancy_fn
 
 
-def combine_deaths_by_month(finland_deaths_by_month_since_1945, finland_deaths_and_population_by_month, min_year):
+def combine_deaths_by_month(finland_deaths_by_month_since_1945, finland_deaths_and_population_by_month, min_year, max_year):
     deaths_by_year_and_month = {}
     for year_item in finland_deaths_by_month_since_1945:
         year = year_item["year"]
@@ -992,7 +1014,6 @@ def combine_deaths_by_month(finland_deaths_by_month_since_1945, finland_deaths_a
     all_years = set((x[0] for x in deaths_by_year_and_month.keys()))
     if min_year is None:
         min_year = min(all_years)
-    max_year = max(all_years)
     result = []
     for year in range(min_year, max_year+1):
         if year < min_year:
@@ -1001,7 +1022,7 @@ def combine_deaths_by_month(finland_deaths_by_month_since_1945, finland_deaths_a
             date = datetime.date(year, month, 1)
             key = (year, month)
             deaths = deaths_by_year_and_month.get(key)
-            if year < datetime.date.today().year:
+            if year <= max_year:
                 assert deaths is not None, "Year %d month %d not in result" % (year, month)
             if deaths is not None:
                 result.append({
@@ -1132,19 +1153,21 @@ def plot_population_forecast_vs_model(population_forecast, baseline_fn):
     plt.xlim(2010, 2030)
     active_lw = 0.7
     inactive_lw = 0.25
-    line_actual, = ax.plot(plot_x, plot_actual, label="Kuolin-\ntilasto$^*$", color="C0", marker='o', markersize=1, linewidth=DEFAULT_LINEWIDTH, zorder=1)
-    line_model, = ax.plot(plot_x, plot_model, label="Malli", color="C3", linewidth=DEFAULT_LINEWIDTH, zorder=2)
+    line_actual, = ax.plot(plot_x, plot_actual, label=T(fi="Kuolin-\ntilasto$^*$",
+                                                        en="Mortality-\nstatistic$^*$"), 
+                           color="C0", marker='o', markersize=1, linewidth=DEFAULT_LINEWIDTH, zorder=1)
+    line_model, = ax.plot(plot_x, plot_model, label=T(fi="Malli", en="Model"), color="C3", linewidth=DEFAULT_LINEWIDTH, zorder=2)
     #line_fc2007, = ax.plot(plot_x, plot_fc2007, label="V-e 2007", color="C6", linewidth=active_lw)
     #line_fc2009, = ax.plot(plot_x, plot_fc2009, label="V-e 2009", color="C7", linewidth=active_lw)
-    line_fc2012, = ax.plot(plot_x, plot_fc2012, label="V-e 2012", color="C5", linewidth=active_lw)
+    line_fc2012, = ax.plot(plot_x, plot_fc2012, label=T(fi="V-e 2012", en="V-e 2012"), color="C5", linewidth=active_lw)
     ax.plot(plot_x, plot_fc2012_inactive, label=None, color="C5", linewidth=inactive_lw, linestyle="dashed")
-    line_fc2015, = ax.plot(plot_x, plot_fc2015, label="V-e 2015", color="C2", linewidth=active_lw)
+    line_fc2015, = ax.plot(plot_x, plot_fc2015, label=T(fi="V-e 2015", en="V-e 2015"), color="C2", linewidth=active_lw)
     ax.plot(plot_x, plot_fc2015_inactive, label=None, color="C2", linewidth=inactive_lw, linestyle="dashed")
-    line_fc2018, = ax.plot(plot_x, plot_fc2018, label="V-e 2018", color="C4", linewidth=active_lw)
+    line_fc2018, = ax.plot(plot_x, plot_fc2018, label=T(fi="V-e 2018", en="P-e 2018"), color="C4", linewidth=active_lw)
     ax.plot(plot_x, plot_fc2018_inactive, label=None, color="C4", linewidth=inactive_lw, linestyle="dashed")
-    line_fc2019, = ax.plot(plot_x, plot_fc2019, label="V-e 2019", color="C8", linewidth=active_lw)
+    line_fc2019, = ax.plot(plot_x, plot_fc2019, label=T(fi="V-e 2019", en="P-e 2019"), color="C8", linewidth=active_lw)
     ax.plot(plot_x, plot_fc2019_inactive, label=None, color="C8", linewidth=inactive_lw, linestyle="dashed")
-    line_fc2021, = ax.plot(plot_x, plot_fc2021, label="V-e 2021", color="C1", linewidth=active_lw)
+    line_fc2021, = ax.plot(plot_x, plot_fc2021, label=T(fi="V-e 2021", en="P-e 2021"), color="C1", linewidth=active_lw)
     ax.plot(plot_x, plot_fc2021_inactive, label=None, color="C1", linewidth=inactive_lw, linestyle="dashed")
     plt.grid(True)
     ax.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(2000))
@@ -1166,10 +1189,12 @@ def plot_population_forecast_vs_model(population_forecast, baseline_fn):
                loc="upper left", ncol=1, bbox_to_anchor=(1.03,1), fontsize=7,
                borderpad=0.3, handletextpad=0.6, labelspacing=0.4, frameon=True, fancybox=False, 
                shadow=False, facecolor="white", framealpha=1.0, borderaxespad=0)
-    fig.text(0.995, 0.22, "*) 2021: ennakkotieto", horizontalalignment="right", fontsize=6, transform=fig.transFigure)
+    fig.text(0.995, 0.22, T(fi="*) 2021: ennakkotieto", 
+                            en="*) preliminary"), 
+             horizontalalignment="right", fontsize=6, transform=fig.transFigure)
     fig.subplots_adjust(left=0.095, right=0.76, top=0.97, bottom=0.15)
     plot_model_cutoff(fig, ax, xpos=2019.5, ypos=0.18)
-    save_fig(fig, "figures/population_forecast_vs_model")
+    save_fig(fig, get_figure_filename("population_forecast_vs_model"))
     #plt.show(block=True)
     plt.close(fig)
 
@@ -1236,55 +1261,55 @@ def plot_monthly_deaths_per_100k(deaths_and_population_by_month, covid_data):
                                       alpha=1, edgecolor=None)
     line_2021, = ax.plot(months_x, line2021_y, label="2021", color="C1", marker='D', markersize=2, linewidth=DEFAULT_LINEWIDTH, zorder=10)
     #line_2022, = ax.plot(months_x, line2022_y, label="2022", color="C4", marker='*', markersize=2, linewidth=DEFAULT_LINEWIDTH, zorder=10)
-    line_covid_2021, = ax.plot(months_x, line_covid_2021_y, label="2021 korona", color="C1", marker='o', markersize=1, linewidth=DEFAULT_LINEWIDTH, zorder=10)
+    line_covid_2021, = ax.plot(months_x, line_covid_2021_y, label=T(fi="2021 korona", en="2021 covid"), color="C1", marker='o', markersize=1, linewidth=DEFAULT_LINEWIDTH, zorder=10)
     ax.legend(handles=[minmax_fill, minmax80pc_fill, line_2021, line_covid_2021],
               loc="upper left", bbox_to_anchor=(0, 1.15), ncol=4, fontsize=7,
               borderpad=0.3, handletextpad=0.25, columnspacing=1, frameon=True, fancybox=False, 
               shadow=False, facecolor="white", framealpha=1.0, borderaxespad=0.05)
     ax_ylabel_transform = matplotlib.transforms.blended_transform_factory(fig.transFigure, ax.transAxes)
-    ax.text(0.02, 0.5, "Kuolleet per 100 000", transform=ax_ylabel_transform, fontsize=7, rotation=90,
+    ax.text(0.02, 0.5, T(fi="Kuolleet per 100 000", en="Deaths per 100 000"), transform=ax_ylabel_transform, fontsize=7, rotation=90,
             horizontalalignment="center", verticalalignment="center")
-    ax.text(0.005, -0.035, "Kuukausi", transform=ax_ylabel_transform, fontsize=7,
+    ax.text(0.005, -0.035, T(fi="Kuukausi", en="Month"), transform=ax_ylabel_transform, fontsize=7,
             horizontalalignment="left", verticalalignment="top")
     fig.subplots_adjust(left=0.095, right=0.99, top=0.88, bottom=0.09)
-    save_fig(fig, "figures/monthly_deaths_per_100k")
+    save_fig(fig, get_figure_filename("monthly_deaths_per_100k"))
     #plt.show(block=True)
     plt.close(fig)
     
 def plot_weekly_deaths_per_age_per_1M(population_by_year_and_age, acm_by_category):
     age_buckets = [
         {
-            "name": "0-19 -vuotiaat",
+            "name": T(fi="0-19 -vuotiaat", en="ages 0-19"),
             "age_categories": ["0-4", "5-9", "10-14", "15-19",],
             "age_start": 0,
             "age_end": 19,
         },
         {
-            "name": "20-49 -vuotiaat",
+            "name": T(fi="20-49 -vuotiaat", en="ages 20-49"),
             "age_categories": ["20-24", "25-29", "30-34", "35-39", "40-44", "45-49"],
             "age_start": 20,
             "age_end": 49,
         },
         {
-            "name": "50-59 -vuotiaat",
+            "name": T(fi="50-59 -vuotiaat", en="ages 50-59"),
             "age_categories": ["50-54", "55-59",],
             "age_start": 50,
             "age_end": 59,
         },
         {
-            "name": "60-69 -vuotiaat",
+            "name": T(fi="60-69 -vuotiaat", en="ages 60-69"),
             "age_categories": ["60-64", "65-69",],
             "age_start": 60,
             "age_end": 69,
         },
         {
-            "name": "70-79 -vuotiaat",
+            "name": T(fi="70-79 -vuotiaat", en="ages 70-79"),
             "age_categories": ["70-74", "75-79",],
             "age_start": 70,
             "age_end": 79,
         },
         {
-            "name": "Yli 80-vuotiaat",
+            "name": T(fi="Yli 80-vuotiaat", en="age 80+"),
             "age_categories": ["80-84", "85-89", "90-"],
             "age_start": 80,
             "age_end": None,
@@ -1343,11 +1368,12 @@ def plot_weekly_deaths_per_age_per_1M(population_by_year_and_age, acm_by_categor
         for label in ax.get_xticklabels():
             label.set_horizontalalignment('center')
         ax.text(0.00, 1.01, age_bucket["name"], fontsize=9, horizontalalignment="left", verticalalignment="bottom", transform=ax.transAxes)
-        ax.text(-0.085, 0.5, "Viikoittain kuolleet per miljoona", transform=ax.transAxes, fontsize=6, rotation=90,
+        ax.text(-0.085, 0.5, T(fi="Viikoittain kuolleet per miljoona",
+                               en="Deaths per week per million"), transform=ax.transAxes, fontsize=6, rotation=90,
                 horizontalalignment="center", verticalalignment="center")
-        ax.text(-0.03, -0.02, "Viikko", fontsize=5, horizontalalignment="right", verticalalignment="top", transform=ax.transAxes)
+        ax.text(-0.03, -0.02, T(fi="Viikko", en="Week"), fontsize=5, horizontalalignment="right", verticalalignment="top", transform=ax.transAxes)
     fig.subplots_adjust(left=0.05, right=0.98, top=0.97, bottom=0.05)
-    save_fig(fig, "figures/weekly_deaths_per_age_per_1M_THL")
+    save_fig(fig, get_figure_filename("weekly_deaths_per_age_per_1M_THL"))
 
     fig, ((ax1, ax2), (ax3, ax4), (ax5, ax6)) = plt.subplots(3, 2, figsize=(PAPER_WIDTH_IN, 6))
     all_axes = (ax1, ax2, ax3, ax4, ax5, ax6)
@@ -1374,11 +1400,14 @@ def plot_weekly_deaths_per_age_per_1M(population_by_year_and_age, acm_by_categor
         for label in ax.get_xticklabels():
             label.set_horizontalalignment('center')
         ax.text(0.00, 1.01, age_bucket["name"], fontsize=9, horizontalalignment="left", verticalalignment="bottom", transform=ax.transAxes)
-        ax.text(-0.085, 0.5, "Viikoittain kuolleet per miljoona", transform=ax.transAxes, fontsize=6, rotation=90,
+        ax.text(-0.085, 0.5, T(fi="Viikoittain kuolleet per miljoona",
+                               en="Deaths per week per million"), 
+                transform=ax.transAxes, fontsize=6, rotation=90,
                 horizontalalignment="center", verticalalignment="center")
-        ax.text(-0.03, -0.02, "Viikko", fontsize=5, horizontalalignment="right", verticalalignment="top", transform=ax.transAxes)
+        ax.text(-0.03, -0.02, T(fi="Viikko", en="Week"), fontsize=5, horizontalalignment="right", 
+                verticalalignment="top", transform=ax.transAxes)
     fig.subplots_adjust(left=0.05, right=0.98, top=0.97, bottom=0.05)
-    save_fig(fig, "figures/weekly_deaths_per_age_per_1M_improved")
+    save_fig(fig, get_figure_filename("weekly_deaths_per_age_per_1M_improved"))
     #plt.show(block=True)
     plt.close(fig)
 
@@ -1398,7 +1427,7 @@ def plot_raw_acm(acm_raw_x, acm_raw_x_date, acm_raw_y, auto_limits):
     #ax.plot(acm_raw_x_date, acm_2yr_y, color="C1", linewidth=0.5, linestyle="solid", zorder=11)
     ax.plot(acm_raw_x_date, acm_3yr_y, color="C1", linewidth=0.5, linestyle="solid", zorder=12)
     fig.subplots_adjust(left=0.04, right=0.995, top=0.965, bottom=0.105)
-    save_fig(fig, "figures/acm_raw")
+    save_fig(fig, get_figure_filename("acm_raw"))
     #plt.show(block=True)
     plt.close(fig)
 
@@ -1446,10 +1475,10 @@ def plot_model_cutoff(fig, ax, xpos=BASELINE_CUTOFF_DATE, ypos=0.14):
         "edgecolor": "black",
         "pad": 0.1,
     }
-    ax.annotate("Mallin muodostus", (xpos_frac, ypos), (-xoffset, 0), verticalalignment="center", horizontalalignment="right", 
+    ax.annotate(T(fi="Mallin muodostus", en="Model formation"), (xpos_frac, ypos), (-xoffset, 0), verticalalignment="center", horizontalalignment="right", 
                 clip_on=False, arrowprops=arrowprops, fontsize=6, 
                 xycoords="axes fraction", textcoords="offset points", zorder=9, color="black", bbox=bbox)
-    ax.annotate("Vertailu", (xpos_frac, ypos), (xoffset, 0), verticalalignment="center", horizontalalignment="left", 
+    ax.annotate(T(fi="Vertailu", en="Expected"), (xpos_frac, ypos), (xoffset, 0), verticalalignment="center", horizontalalignment="left", 
                 clip_on=False, arrowprops=arrowprops, fontsize=6, 
                 xycoords="axes fraction", textcoords="offset points", zorder=9, color="black", bbox=bbox)
     
@@ -1491,15 +1520,15 @@ def plot_acm_baseline_trend(acm_raw_x, acm_raw_x_date, acm_raw_y,
             label = ("$p_{v%s}$=%.1f" % (index+1, y,)).replace(".", ",")
             ax.annotate(label, xy=(x, y-110), textcoords='data', fontsize=7, horizontalalignment="center", fontweight="semibold")
     #plt.xticks(rotation=45)
-    fig.autofmt_xdate(rotation=45, ha="right", which="both")
     plt.grid(True)
     ax.xaxis.set_major_locator(matplotlib.dates.YearLocator())
+    ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter('%Y'))
     ax.tick_params(axis="x", pad=0.5, labelsize=7, labelrotation=60)
     for label in ax.get_xticklabels():
         label.set_horizontalalignment('center')
     fig.subplots_adjust(left=0.04, right=0.99, top=0.975, bottom=0.21)
     plot_model_cutoff(fig, ax)
-    save_fig(fig, "figures/baseline_trend")
+    save_fig(fig, get_figure_filename("baseline_trend"))
     #plt.show(block=True)
     plt.close(fig)
 
@@ -1530,15 +1559,15 @@ def plot_acm_baseline_fn(acm_raw_x, acm_raw_x_date, acm_raw_y,
     ax.plot(baseline_fn_x_date, baseline_fn_y, color="C3", linewidth=DEFAULT_LINEWIDTH, linestyle="-")
     #plt.scatter(baseline_fn_x_date, baseline_fn_y, color="orange", s=3.0)
 
-    fig.autofmt_xdate(rotation=45, ha="right", which="both")
     plt.grid(True)
     ax.xaxis.set_major_locator(matplotlib.dates.YearLocator())
+    ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter('%Y'))
     ax.tick_params(axis="x", pad=0.5, labelsize=7, labelrotation=60)
     for label in ax.get_xticklabels():
         label.set_horizontalalignment('center')
     fig.subplots_adjust(left=0.04, right=0.99, top=0.975, bottom=0.21)
     plot_model_cutoff(fig, ax)
-    save_fig(fig, "figures/baseline_fn")
+    save_fig(fig, get_figure_filename("baseline_fn"))
     #plt.show(block=True)
     plt.close(fig)
 
@@ -1594,9 +1623,9 @@ def plot_acm_baseline_trend_and_fn(acm_raw_x, acm_raw_x_date, acm_raw_y,
                 label = ("$p_{v%d}$=%.1f" % (index+1, y,)).replace(".", ",")
                 ax.annotate(label, xy=(x, y), xytext=(x+datetime.timedelta(days=50), y-180), textcoords='data', fontsize=6, horizontalalignment="left", arrowprops=arrowprops)
     #plt.xticks(rotation=45)
-    fig.autofmt_xdate(rotation=45, ha="right", which="both")
     plt.grid(True)
     ax.xaxis.set_major_locator(matplotlib.dates.YearLocator())
+    ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter('%Y'))
     ax.tick_params(axis="x", pad=2.5, labelsize=7, labelrotation=None)
     for label in ax.get_xticklabels():
         label.set_horizontalalignment('center')
@@ -1611,7 +1640,7 @@ def plot_acm_baseline_trend_and_fn(acm_raw_x, acm_raw_x_date, acm_raw_y,
 
     fig.subplots_adjust(left=0.04, right=0.995, top=0.965, bottom=0.11)
     plot_model_cutoff(fig, ax, ypos=0.11)
-    save_fig(fig, "figures/baseline_trend_and_fn")
+    save_fig(fig, get_figure_filename("baseline_trend_and_fn"))
     #plt.show(block=True)
     plt.close(fig)
 
@@ -1636,8 +1665,12 @@ def plot_combined_baseline_subplots(acm_raw_x, acm_raw_x_date, acm_raw_y,
         "linestyle": "solid",
         "color": "C0",
     }
-    acm_7wkavg_line, = ax1.plot(baseline_part_x_date, baseline_part_y, zorder=1, label="7 viikon juokseva keskiarvo", **acm_avg_line_params)
-    acm_nonbaseline_7wkavg_line, = ax1.plot(nonbaseline_part_x_date, nonbaseline_part_y, zorder=1, label="Keskikäyrään vaikuttamaton data", **acm_avg_line_params)
+    acm_7wkavg_line, = ax1.plot(baseline_part_x_date, baseline_part_y, zorder=1, 
+                                label=T(fi="7 viikon juokseva keskiarvo", en="7 week running average"), 
+                                **acm_avg_line_params)
+    acm_nonbaseline_7wkavg_line, = ax1.plot(nonbaseline_part_x_date, nonbaseline_part_y, zorder=1, 
+                                            label=T(fi="Keskikäyrään vaikuttamaton data", en="Data not affecting baseline"),
+                                            **acm_avg_line_params)
     #ax1.plot(baseline_average_x_date, baseline_average_y, color="olivedrab", linewidth=1, linestyle="-", zorder=2)
 
     baseline_range = pandas.date_range(datetime.date(1980, 1, 1), datetime.date(2030, 1, 1), periods=3000)
@@ -1646,7 +1679,7 @@ def plot_combined_baseline_subplots(acm_raw_x, acm_raw_x_date, acm_raw_y,
     baseline_trend_x = map_datetime64_to_x(baseline_trend_x_date)
     baseline_trend_y = baseline_trend_fn(baseline_trend_x)
     baseline_trend_line, = ax1.plot(baseline_trend_x_date, baseline_trend_y, color="C3", linewidth=1.5, zorder=3,
-                                     label="Trendi")
+                                     label=T(fi="Trendi", en="Trend"))
     ax1.scatter(baseline_average_x_date, baseline_average_y, color="C1", s=10.0, zorder=4)
     ax1.scatter(baseline_average_x_date, baseline_average_y, color="white", s=4.0, zorder=5)
     for index, (x, y) in enumerate(zip(baseline_average_x_date, baseline_average_y)):
@@ -1660,9 +1693,9 @@ def plot_combined_baseline_subplots(acm_raw_x, acm_raw_x_date, acm_raw_y,
             label = ("$p_{ve}$=%.1f" % (y,)).replace(".", ",")
             ax1.annotate(label, xy=(x, y-110), textcoords='data', fontsize=7, horizontalalignment="center", fontweight="semibold")
     #ax1.xticks(rotation=45)
-    fig.autofmt_xdate(rotation=45, ha="right", which="both")
     ax1.grid(True)
     ax1.xaxis.set_major_locator(matplotlib.dates.YearLocator())
+    ax1.xaxis.set_major_formatter(matplotlib.dates.DateFormatter('%Y'))
     ax1.tick_params(axis="x", pad=0.5, labelsize=7, labelrotation=60)
     for label in ax1.get_xticklabels():
         label.set_horizontalalignment('center')
@@ -1687,12 +1720,13 @@ def plot_combined_baseline_subplots(acm_raw_x, acm_raw_x_date, acm_raw_y,
     }
     pos_mortality_fill = ax2.fill_between(acm_averaged_x_date, acm_averaged_y, acm_part_baseline_fn_y,
                                           where=acm_averaged_y > acm_part_baseline_fn_y,
-                                          facecolor="C1", label="Ylikuolleisuus", **fill_params)
+                                          facecolor="C1", label=T(fi="Ylikuolleisuus", en="Excess mortality"), **fill_params)
     neg_mortality_fill = ax2.fill_between(acm_averaged_x_date, acm_averaged_y, acm_part_baseline_fn_y,
                                           where=acm_averaged_y < acm_part_baseline_fn_y, 
-                                          facecolor="C6", label="Alikuolleisuus", **fill_params)
+                                          facecolor="C6", label=T(fi="Alikuolleisuus", en="Mortality deficit"), **fill_params)
     ax2.grid(True)
     ax2.xaxis.set_major_locator(matplotlib.dates.YearLocator())
+    ax2.xaxis.set_major_formatter(matplotlib.dates.DateFormatter('%Y'))
     ax2.tick_params(axis="x", pad=0.5, labelsize=7, labelrotation=60)
     for label in ax2.get_xticklabels():
         label.set_horizontalalignment('center')
@@ -1706,17 +1740,17 @@ def plot_combined_baseline_subplots(acm_raw_x, acm_raw_x_date, acm_raw_y,
                loc=(0.055, 0.51), ncol=5, fontsize=7,
                borderpad=0.3, handletextpad=0.25, labelspacing=0.4, frameon=False, fancybox=False, 
                shadow=False, facecolor="white", framealpha=1.0)
-    ax2.annotate('Anomalia', xy=(datetime.date(2022, 1, 1), 1100), xycoords='data',
+    ax2.annotate(T(fi="Anomalia", en="Anomaly"), xy=(datetime.date(2022, 1, 1), 1100), xycoords='data',
                  xytext=(0.965, 0.35), textcoords='axes fraction', 
                  arrowprops={ "width": 0.25, "shrink": 0, "connectionstyle": "arc3", "headlength": 2.0, "headwidth": 2.5, "edgecolor": "none", "facecolor": "black", },
                  horizontalalignment='center', verticalalignment='top', fontsize=7)
-    fig.text(0.01, 0.5, "Viikoittain kuolleiden lkm", rotation="vertical", 
+    fig.text(0.01, 0.5, T(fi="Viikoittain kuolleiden lkm", en="Deaths per week"), rotation="vertical", 
              verticalalignment="center", horizontalalignment="center", 
              fontsize=7, transform=fig.transFigure)
     fig.subplots_adjust(left=0.055, right=0.99, top=0.985, bottom=0.12, wspace=0, hspace=0.26)
     plot_model_cutoff(fig, ax1)
     plot_model_cutoff(fig, ax2)
-    save_fig(fig, "figures/combined_baseline_plots")
+    save_fig(fig, get_figure_filename("combined_baseline_plots"))
     #plt.show(block=True)
     plt.close(fig)
 
@@ -1727,10 +1761,9 @@ def plot_excess_mortality(excess_mortality_x, excess_mortality_x_date, excess_mo
     acm_avg_line_params = {
         "linewidth": DEFAULT_LINEWIDTH,
         "linestyle": "solid",
-        "label": "7 viikon juokseva keskiarvo",
+        "label": T(fi="7 viikon juokseva keskiarvo", en="7 week running average"),
         "color": "C0",
     }
-    fig.autofmt_xdate(rotation=45, ha="right", which="both")
     fill_params = {
         "linewidth": 0.05,
         "interpolate": True,
@@ -1738,14 +1771,16 @@ def plot_excess_mortality(excess_mortality_x, excess_mortality_x_date, excess_mo
         #"edgecolor": "black",
     }
     pos_mortality_fill = ax.fill_between(excess_mortality_x_date, excess_mortality_y, 0,
-                                         where=excess_mortality_y > 0,
-                                         facecolor=EXCESS_MORTALITY_FILL_COLOR, label="Ylikuolleisuus", **fill_params)
+                                         where=excess_mortality_y > 0, facecolor=EXCESS_MORTALITY_FILL_COLOR, 
+                                         label=T(fi="Ylikuolleisuus", en="Excess mortality"),
+                                         **fill_params)
     neg_mortality_fill = ax.fill_between(excess_mortality_x_date, excess_mortality_y, 0,
-                                         where=excess_mortality_y <= 0, 
-                                         facecolor=LOW_MORTALITY_FILL_COLOR, label="Alikuolleisuus", **fill_params)
+                                         where=excess_mortality_y <= 0, facecolor=LOW_MORTALITY_FILL_COLOR, 
+                                         label=T(fi="Alikuolleisuus", en="Mortality deficit"), **fill_params)
     ax.grid(True)
     ax.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(100))
     ax.xaxis.set_major_locator(matplotlib.dates.YearLocator())
+    ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter('%Y'))
     ax.tick_params(axis="y", labelleft=True, labelright=True, left=True, right=True)
     ax.tick_params(axis="x", pad=2.5, labelsize=7, labelrotation=None)
     for label in ax.get_xticklabels():
@@ -1780,7 +1815,7 @@ def plot_excess_mortality(excess_mortality_x, excess_mortality_x_date, excess_mo
         xy = label.get_position()
         label.set_horizontalalignment('left')
     plot_model_cutoff(fig, ax)
-    save_fig(fig, "figures/excess_mortality_raw")
+    save_fig(fig, get_figure_filename("excess_mortality_raw"))
     #plt.show(block=True)
     plt.close(fig)
 
@@ -1793,10 +1828,9 @@ def plot_excess_mortality(excess_mortality_x, excess_mortality_x_date, excess_mo
     acm_avg_line_params = {
         "linewidth": DEFAULT_LINEWIDTH,
         "linestyle": "solid",
-        "label": "Kuolleisuus (juokseva keskiarvo)",
+        "label": T(fi="Kuolleisuus (juokseva keskiarvo)", en="Deats (running average)"),
         "color": "C0",
     }
-    fig2.autofmt_xdate(rotation=45, ha="right", which="both")
     fill_params = {
         "linewidth": 0.05,
         "interpolate": True,
@@ -1804,13 +1838,16 @@ def plot_excess_mortality(excess_mortality_x, excess_mortality_x_date, excess_mo
         #"edgecolor": "black",
     }
     pos_mortality_fill = ax2.fill_between(excess_mortality_avg_x_date, excess_mortality_avg_y, 0,
-                                          where=excess_mortality_avg_y > 0,
-                                          facecolor=EXCESS_MORTALITY_FILL_COLOR, label="Ylikuolleisuus", **fill_params)
+                                          where=excess_mortality_avg_y > 0, facecolor=EXCESS_MORTALITY_FILL_COLOR, 
+                                          label=T(fi="Ylikuolleisuus", en="Excess mortality"), 
+                                          **fill_params)
     neg_mortality_fill = ax2.fill_between(excess_mortality_avg_x_date, excess_mortality_avg_y, 0,
-                                          where=excess_mortality_avg_y <= 0, 
-                                          facecolor=LOW_MORTALITY_FILL_COLOR, label="Alikuolleisuus", **fill_params)
+                                          where=excess_mortality_avg_y <= 0, facecolor=LOW_MORTALITY_FILL_COLOR, 
+                                          label=T(fi="Alikuolleisuus", en="Mortality deficit"), 
+                                          **fill_params)
     ax2.grid(True)
     ax2.xaxis.set_major_locator(matplotlib.dates.YearLocator())
+    ax2.xaxis.set_major_formatter(matplotlib.dates.DateFormatter('%Y'))
     ax2.tick_params(axis="x", pad=0.5, labelsize=7, labelrotation=60)
     for label in ax2.get_xticklabels():
         label.set_horizontalalignment('center')
@@ -1836,7 +1873,7 @@ def plot_excess_mortality(excess_mortality_x, excess_mortality_x_date, excess_mo
     ax2_histy.xaxis.set_ticklabels([])
     ax2_histy.hist(excess_mortality_avg_y, bins=bins, density=True, orientation='horizontal')
     plot_model_cutoff(fig, ax2)
-    save_fig(fig2, "figures/excess_mortality")
+    save_fig(fig2, get_figure_filename("excess_mortality"))
     #plt.show(block=True)
     plt.close(fig2)
 
@@ -1912,7 +1949,8 @@ def plot_yearly_cumulative_mortality(all_cause_mortality, baseline_fn, covid_dat
               frameon=True, fancybox=False, shadow=False, facecolor="white", framealpha=1.0, edgecolor="0.5",
               borderaxespad=0)
     fig.text(0.85, 0.12, # 0.91, 0.10, 
-             "*) korona-\n    kuolemat\n    vähennetty", 
+             T(fi="*) korona-\n    kuolemat\n    vähennetty", 
+               en="*) covid\n    deaths\n    excluded"),
              horizontalalignment="left", fontsize=6, transform=fig.transFigure)
     week_num = start_week
     week_pos = 1
@@ -1932,13 +1970,14 @@ def plot_yearly_cumulative_mortality(all_cause_mortality, baseline_fn, covid_dat
     ax.xaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(_major_formatter))
     ax.xaxis.set_minor_locator(matplotlib.ticker.MultipleLocator(1))
     ax.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(500))
-    ax.text(0.00, -0.02, "Viikko", fontsize=7, horizontalalignment="right", verticalalignment="top", transform=ax.transAxes)
+    ax.text(0.00, -0.02, T(fi="Viikko", en="Week"), 
+            fontsize=7, horizontalalignment="right", verticalalignment="top", transform=ax.transAxes)
     #ax.set_xlabel('Viikko')
     ax.axhline(linewidth=0.8, color="black", zorder=0)
     #ax.xaxis.set_minor_locator(matplotlib.ticker.AutoMinorLocator(10))
     # fig.subplots_adjust(left=0.045, right=0.895, top=0.98, bottom=0.06)
     fig.subplots_adjust(left=0.095, right=0.80, top=0.98, bottom=0.06)
-    save_fig(fig, "figures/yearly_cumulative_excess_mortality_start_%d" % (start_week,))
+    save_fig(fig, get_figure_filename("yearly_cumulative_excess_mortality_start_%d" % (start_week,)))
     #plt.show(block=True)
     plt.close(fig)
 
@@ -1967,9 +2006,9 @@ def plot_all_time_cumulative_excess_mortality(all_cause_mortality, baseline_fn):
     plt.ylim(-1500, 4000)
     ax.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(500))
     plt.xlim(min(cumulative_excess_mortality_x_date) - datetime.timedelta(days=160), max(cumulative_excess_mortality_x_date) + datetime.timedelta(days=int(0.8*365)))
-    fig.autofmt_xdate(rotation=45, ha="right", which="both")
     plt.grid(True)
     ax.xaxis.set_major_locator(matplotlib.dates.YearLocator())
+    ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter('%Y'))
     ax.axhline(linewidth=1, color="black")
     ax.tick_params(axis="x", pad=0.5, labelsize=7, labelrotation=60)
     for label in ax.get_xticklabels():
@@ -1979,18 +2018,19 @@ def plot_all_time_cumulative_excess_mortality(all_cause_mortality, baseline_fn):
     #plt.scatter(baseline_fn_x_date, baseline_fn_y, color="orange", s=3.0)
     fig.subplots_adjust(bottom=0.11, top=0.975, left=0.095, right=0.99)
     plot_model_cutoff(fig, ax, ypos=0.09)
-    save_fig(fig, "figures/all_time_cumulative_excess_mortality")
+    save_fig(fig, get_figure_filename("all_time_cumulative_excess_mortality"))
     #plt.show(block=True)
 
     fig.subplots_adjust(bottom=0.11, top=0.92, left=0.095, right=0.99)
     ax_ylabel_transform = matplotlib.transforms.blended_transform_factory(fig.transFigure, ax.transAxes)
-    ax.text(0.5, 1.02, "Kumuloitu ylikuolleisuus", transform=ax_ylabel_transform, fontsize=9,
+    ax.text(0.5, 1.02, T(fi="Kumuloitu ylikuolleisuus", en="Cumulated excess mortality"),
+            transform=ax_ylabel_transform, fontsize=9,
             horizontalalignment="center", verticalalignment="bottom")
     #ax.text(0.02, 0.5, "Kumulatiivinen ylikuolleisuus", transform=ax_ylabel_transform, fontsize=7, rotation=90,
     #        horizontalalignment="center", verticalalignment="center")
     #ax.text(0.005, -0.05, "Vuosi", transform=ax_ylabel_transform, fontsize=7,
     #        horizontalalignment="left", verticalalignment="top")
-    save_fig(fig, "figures/all_time_cumulative_excess_mortality_labels")
+    save_fig(fig, get_figure_filename("all_time_cumulative_excess_mortality_labels"))
 
     plt.close(fig)
 
@@ -2022,7 +2062,6 @@ def plot_covid_cases_and_deaths(covid_data):
     fig1, ax1 = plt.subplots(1, 1, figsize=(COLUMN_WIDTH_IN, 0.8))
     ax1.set_ylim(0, 120)
     ax1.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(20))
-    fig1.autofmt_xdate(rotation=0, ha="right", which="both")
     ax1.set_xlim(datetime.date(2021, 1, 1), datetime.date(2022, 1, 1))
     ax1.xaxis.set_major_locator(matplotlib.dates.YearLocator())
     ax1.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%Y"))
@@ -2031,7 +2070,7 @@ def plot_covid_cases_and_deaths(covid_data):
     for label in ax1.get_xticklabels(which="both"):
         label.set_horizontalalignment('center')
     deaths_line, = ax1.plot(covid_x_date, covid_deaths_y, color="C1", linewidth=DEFAULT_LINEWIDTH, linestyle="solid", 
-                            label="Koronaan kuolleet")
+                            label=T(fi="Koronaan kuolleet", en="Covid deaths"))
     ax1.scatter(covid_x_date, covid_deaths_y, color="C1", s=1.0)
     ax1.tick_params(axis="x", which="minor", reset=True, pad=2, labelsize=7, labelrotation=0, direction="out", 
                     top=False, bottom=True, labeltop=False, labelbottom=True)
@@ -2043,7 +2082,7 @@ def plot_covid_cases_and_deaths(covid_data):
     #                    borderpad=0.3, labelspacing=0.2, frameon=True, fancybox=False, 
     #                    shadow=False, facecolor="white", framealpha=1.0, edgecolor="black")
     fig1.subplots_adjust(left=0.08, right=0.985, top=0.955, bottom=0.165)
-    save_fig(fig1, "figures/covid_deaths")
+    save_fig(fig1, get_figure_filename("covid_deaths"))
     #legend.remove()
 
     ax1b = ax1.twinx()
@@ -2051,9 +2090,10 @@ def plot_covid_cases_and_deaths(covid_data):
     ax1b.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(10000))
     ax1b.set_xlim(datetime.date(2021, 1, 1), max(covid_x_date) + datetime.timedelta(days=4))
     ax1b.xaxis.set_major_locator(matplotlib.dates.YearLocator())
+    ax1b.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%Y"))
     ax1b.xaxis.set_minor_locator(matplotlib.dates.MonthLocator())
     cases_line, = ax1b.plot(covid_x_date, covid_cases_y, color="C2", linewidth=DEFAULT_LINEWIDTH, linestyle="solid", 
-                            label="Koronatapaukset")
+                            label=T(fi="Koronatapaukset", en="Covid cases"))
     for label in ax1b.get_xticklabels():
         label.set_horizontalalignment('center')
     ax1b.tick_params(axis="x", pad=2, labelsize=7, labelrotation=0, direction="out", 
@@ -2065,7 +2105,7 @@ def plot_covid_cases_and_deaths(covid_data):
                         borderpad=0.3, labelspacing=0.2, frameon=True, fancybox=False, 
                         shadow=False, facecolor="white", framealpha=1.0, edgecolor="black")
     fig1.subplots_adjust(left=0.08, right=0.89, top=0.99, bottom=0.12)
-    save_fig(fig1, "figures/covid_cases_and_deaths")
+    save_fig(fig1, get_figure_filename("covid_cases_and_deaths"))
     plt.close(fig1)
 
 def plot_euromomo_zscores(country_euromomo_data, output_file_name, output_cumulative_file_name, output_combined_file_name):
@@ -2106,7 +2146,6 @@ def plot_euromomo_zscores(country_euromomo_data, output_file_name, output_cumula
     fig1, ax1 = plt.subplots(1, 1, figsize=(COLUMN_WIDTH_IN, 1.6))
     ax1.set_xlim(min(zscore_x_date), max(zscore_x_date))
     ax1.axhline(linewidth=0.8, color="black")
-    fig1.autofmt_xdate(rotation=0, ha="right", which="both")
     ax1.xaxis.set_major_locator(matplotlib.dates.YearLocator())
     ax1.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%Y"))
     ax1.axhline(y=4, linewidth=0.5, color="r", linestyle="dashed")
@@ -2117,7 +2156,6 @@ def plot_euromomo_zscores(country_euromomo_data, output_file_name, output_cumula
     plt.close(fig1)
 
     fig2, ax2 = plt.subplots(1, 1, figsize=(COLUMN_WIDTH_IN, 1.4))
-    fig2.autofmt_xdate(rotation=0, ha="right", which="both")
     # ax2.set_ylim(-50, 850)
     ax2.set_xlim(min(zscore_x_date), max(zscore_x_date))
     ax2.axhline(linewidth=0.8, color="black")
@@ -2130,11 +2168,13 @@ def plot_euromomo_zscores(country_euromomo_data, output_file_name, output_cumula
         "edgecolor": "black",
     }
     ax2.fill_between(cumulative_zscore_x_date, cumulative_zscore_y, 0,
-                     where=cumulative_zscore_y > 0,
-                     facecolor=EXCESS_MORTALITY_FILL_COLOR, label="Ylikuolleisuus EuroMoMo", **fill_params)
+                     where=cumulative_zscore_y > 0, facecolor=EXCESS_MORTALITY_FILL_COLOR, 
+                     label=T(fi="Ylikuolleisuus EuroMoMo", en="Excess mortality EuroMoMo"), 
+                     **fill_params)
     ax2.fill_between(cumulative_zscore_x_date, cumulative_zscore_y, 0,
-                     where=cumulative_zscore_y <= 0, 
-                     facecolor=LOW_MORTALITY_FILL_COLOR, label="Alikuolleisuus EuroMoMo", **fill_params)
+                     where=cumulative_zscore_y <= 0, facecolor=LOW_MORTALITY_FILL_COLOR, 
+                     label=T(fi="Alikuolleisuus EuroMoMo", en="Mortality deficit EuroMoMo"), 
+                     **fill_params)
     fig2.subplots_adjust(left=0.10, right=0.99, top=0.99, bottom=0.08)
     save_fig(fig2, output_cumulative_file_name)
     plt.close(fig2)
@@ -2142,7 +2182,6 @@ def plot_euromomo_zscores(country_euromomo_data, output_file_name, output_cumula
     fig3, (ax3, ax4) = plt.subplots(2, 1, figsize=(COLUMN_WIDTH_IN, 2.4))
     xlim_start, xlim_end = datetime.date(2017, 1, 1), datetime.date(2022, 12, 31)
     #xlim_start, xlim_end = min(zscore_x_date), max(zscore_x_date)
-    fig3.autofmt_xdate(rotation=0, ha="right", which="both")
     # ax3.set_ylim(-50, 850)
     for ax in (ax3, ax4):
         ax.set_xlim(xlim_start, xlim_end)
@@ -2170,11 +2209,13 @@ def plot_euromomo_zscores(country_euromomo_data, output_file_name, output_cumula
     ax3.plot(zscore_x_date, zscore_y, linewidth=0.25, color=BLUE_COLOR)
     #ax3.plot(zscore_x_date, zscore_avg_y, linewidth=0.6, color="C6", linestyle="solid")
     ax4.fill_between(cumulative_zscore_x_date, cumulative_zscore_y, 0,
-                     where=cumulative_zscore_y > 0,
-                     facecolor=EXCESS_MORTALITY_FILL_COLOR, label="Ylikuolleisuus EuroMoMo", **fill_params)
+                     where=cumulative_zscore_y > 0, facecolor=EXCESS_MORTALITY_FILL_COLOR, 
+                     label=T(fi="Ylikuolleisuus EuroMoMo", en="Excess mortality EuroMoMo"), 
+                     **fill_params)
     ax4.fill_between(cumulative_zscore_x_date, cumulative_zscore_y, 0,
-                     where=cumulative_zscore_y <= 0, 
-                     facecolor=LOW_MORTALITY_FILL_COLOR, label="Alikuolleisuus EuroMoMo", **fill_params)
+                     where=cumulative_zscore_y <= 0, facecolor=LOW_MORTALITY_FILL_COLOR, 
+                     label=T(fi="Alikuolleisuus EuroMoMo", en="Mortality deficit EuroMoMo"), 
+                     **fill_params)
     # Show year labels in top x-axis
     ax3b = ax3.twiny()
     ax4b = ax4.twiny()
@@ -2195,16 +2236,20 @@ def plot_euromomo_zscores(country_euromomo_data, output_file_name, output_cumula
     # Show week numbers in bottom x-axis
     for ax in (ax3, ax4):
         ax.xaxis.set_major_locator(matplotlib.dates.YearLocator())
-        ax.grid(axis="x", color='gray', linestyle='solid', linewidth=0.5)
+        _matplotlib_bug_20149_workaround(ax.xaxis)
+        ax.grid(which="major", axis="x", color='gray', linestyle='solid', linewidth=0.5)
     ax4.grid(axis="x", which="minor", visible=False)
     # Labels manually
     ax3_ylabel_transform = matplotlib.transforms.blended_transform_factory(fig3.transFigure, ax3.transAxes)
-    ax3.text(0.02, 0.5, "Viikoittainen z", transform=ax3_ylabel_transform, fontsize=7, rotation=90,
+    ax3.text(0.02, 0.5, T(fi="Viikoittainen z", en="Weekly z"), 
+             transform=ax3_ylabel_transform, fontsize=7, rotation=90,
              horizontalalignment="center", verticalalignment="center")
     ax4_ylabel_transform = matplotlib.transforms.blended_transform_factory(fig3.transFigure, ax4.transAxes)
-    ax4.text(0.02, 0.5, "Kumulatiivinen z", transform=ax4_ylabel_transform, fontsize=7, rotation=90,
+    ax4.text(0.02, 0.5, T(fi="Kumulatiivinen z", en="Cumulative z"),
+             transform=ax4_ylabel_transform, fontsize=7, rotation=90,
              horizontalalignment="center", verticalalignment="center")
-    ax4.text(0.005, -0.02, "Viikko", transform=ax4_ylabel_transform, fontsize=7,
+    ax4.text(0.005, -0.02, T(fi="Viikko", en="Week"), 
+             transform=ax4_ylabel_transform, fontsize=7,
              horizontalalignment="left", verticalalignment="top")
     # Rectangles
     rect_transform = matplotlib.transforms.blended_transform_factory(ax4.transAxes, fig3.transFigure)
@@ -2260,7 +2305,6 @@ def plot_highlighted_euromomo_zscores(country_euromomo_data):
     fig, ax3 = plt.subplots(1, 1, figsize=(COLUMN_WIDTH_IN, 1.2))
     xlim_start, xlim_end = datetime.date(2017, 1, 1), datetime.date(2022, 12, 31)
     #xlim_start, xlim_end = min(zscore_x_date), max(zscore_x_date)
-    fig.autofmt_xdate(rotation=0, ha="right", which="both")
     ax3.set_ylim(-3, 4)
     ax3.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(1))
     ax3.set_xlim(xlim_start, xlim_end)
@@ -2287,10 +2331,12 @@ def plot_highlighted_euromomo_zscores(country_euromomo_data):
         label.set_horizontalalignment('center')
     # Show week numbers in bottom x-axis
     ax3.xaxis.set_major_locator(matplotlib.dates.YearLocator())
+    _matplotlib_bug_20149_workaround(ax3.xaxis)
     ax3.grid(axis="x", color='gray', linestyle='solid', linewidth=0.5)
     # Labels manually
     ax3_ylabel_transform = matplotlib.transforms.blended_transform_factory(fig.transFigure, ax3.transAxes)
-    ax3.text(0.02, 0.5, "Viikoittainen z", transform=ax3_ylabel_transform, fontsize=7, rotation=90,
+    ax3.text(0.02, 0.5, T(fi="Viikoittainen z", en="Weekly z"),
+             transform=ax3_ylabel_transform, fontsize=7, rotation=90,
              horizontalalignment="center", verticalalignment="center")
     # Rectangles
     rect_start_x = (get_date_from_isoweek(2021, 24)-xlim_start).days / (xlim_end - xlim_start).days
@@ -2299,7 +2345,7 @@ def plot_highlighted_euromomo_zscores(country_euromomo_data):
                                               linewidth=None, color="#ffaaaa", fill=True, clip_on=True, zorder=0)
     ax3.add_patch(rect_patch)
     fig.subplots_adjust(left=0.08, right=0.995, top=0.92, bottom=0.04, wspace=0, hspace=0.12)
-    save_fig(fig, "figures/euromomo_zscores_highlighted")
+    save_fig(fig, get_figure_filename("euromomo_zscores_highlighted"))
     plt.close(fig)
 
 def plot_euromomo_vs_model_cumulative(excess_mortality_x, excess_mortality_x_date, excess_mortality_y, country_euromomo_data):
@@ -2352,18 +2398,16 @@ def plot_euromomo_vs_model_cumulative(excess_mortality_x, excess_mortality_x_dat
     fig1, ax1 = plt.subplots(1, 1, figsize=(COLUMN_WIDTH_IN, 1.6))
     ax1.set_xlim(min(zscore_x_date), max(zscore_x_date))
     ax1.axhline(linewidth=0.8, color="black")
-    fig1.autofmt_xdate(rotation=0, ha="right", which="both")
     ax1.xaxis.set_major_locator(matplotlib.dates.YearLocator())
     ax1.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%Y"))
     ax1.axhline(y=4, linewidth=0.5, color="r", linestyle="dashed")
     ax1.plot(zscore_x_date, zscore_y, linewidth=0.4, color="C5", alpha=0.4)
     ax1.plot(zscore_x_date, zscore_avg_y, linewidth=0.6, color="C6", linestyle="solid")
     fig1.subplots_adjust(left=0.08, right=0.99, top=0.99, bottom=0.08)
-    save_fig(fig1, "figures/euromomo_zscores")
+    save_fig(fig1, get_figure_filename("euromomo_zscores"))
     plt.close(fig1)
 
     fig2, (ax2, ax2b) = plt.subplots(2, 1, figsize=(COLUMN_WIDTH_IN, 2.2))
-    fig2.autofmt_xdate(rotation=0, ha="right", which="both")
     for ax in (ax2, ax2b):
         ax.set_xlim(min(zscore_x_date), max(zscore_x_date))
         ax.axhline(linewidth=0.8, color="black")
@@ -2376,19 +2420,23 @@ def plot_euromomo_vs_model_cumulative(excess_mortality_x, excess_mortality_x_dat
         "edgecolor": "black",
     }
     ax2.fill_between(cumulative_zscore_x_date, cumulative_zscore_y, 0,
-                     where=cumulative_zscore_y > 0,
-                     facecolor=EXCESS_MORTALITY_FILL_COLOR, label="Ylikuolleisuus EuroMoMo", **fill_params)
+                     where=cumulative_zscore_y > 0, facecolor=EXCESS_MORTALITY_FILL_COLOR, 
+                     label=T(fi="Ylikuolleisuus EuroMoMo", en="Excess mortality EuroMoMo"), 
+                     **fill_params)
     ax2.fill_between(cumulative_zscore_x_date, cumulative_zscore_y, 0,
-                     where=cumulative_zscore_y <= 0, 
-                     facecolor=LOW_MORTALITY_FILL_COLOR, label="Alikuolleisuus EuroMoMo", **fill_params)
+                     where=cumulative_zscore_y <= 0, facecolor=LOW_MORTALITY_FILL_COLOR, 
+                     label=T(fi="Alikuolleisuus EuroMoMo", en="Mortality deficit EuroMoMo"), 
+                     **fill_params)
     ax2b.fill_between(cumulative_zscore_x_date, cumulative_excmort_y, 0,
-                      where=cumulative_excmort_y > 0,
-                      facecolor=EXCESS_MORTALITY_FILL_COLOR, label="Ylikuolleisuus", **fill_params)
+                      where=cumulative_excmort_y > 0, facecolor=EXCESS_MORTALITY_FILL_COLOR, 
+                      label=T(fi="Ylikuolleisuus", en="Excess mortality"), 
+                      **fill_params)
     ax2b.fill_between(cumulative_zscore_x_date, cumulative_excmort_y, 0,
-                      where=cumulative_excmort_y <= 0, 
-                      facecolor=LOW_MORTALITY_FILL_COLOR, label="Alikuolleisuus", **fill_params)
+                      where=cumulative_excmort_y <= 0, facecolor=LOW_MORTALITY_FILL_COLOR, 
+                      label=T(fi="Alikuolleisuus", en="Mortality deficit"), 
+                      **fill_params)
     fig2.subplots_adjust(left=0.10, right=0.99, top=0.99, bottom=0.08, wspace=0, hspace=0.06)
-    save_fig(fig2, "figures/euromomo_vs_model_cumulative")
+    save_fig(fig2, get_figure_filename("euromomo_vs_model_cumulative"))
     plt.close(fig2)
 
 def plot_euromomo_correlation(excess_mortality_x, excess_mortality_x_date, excess_mortality_y, country_euromomo_data):
@@ -2451,15 +2499,17 @@ def plot_euromomo_correlation(excess_mortality_x, excess_mortality_x_date, exces
     pearsons_r = numpy.corrcoef(correlation_zscore, correlation_excess_mortality)[1,0]
     ax1.text(0.80, 0.64, "r=%.2f" % (pearsons_r,), fontsize=7, color="r", transform=ax1.transAxes)
     ax1_ylabel_transform = matplotlib.transforms.blended_transform_factory(fig.transFigure, ax1.transAxes)
-    ax1.text(0.04, 0.5, "Viikoittainen\nylikuolleisuus", transform=ax1_ylabel_transform, fontsize=7, rotation=90,
+    ax1.text(0.04, 0.5, T(fi="Viikoittainen\nylikuolleisuus", en="Weekly\nexcess mort."), 
+             transform=ax1_ylabel_transform, fontsize=7, rotation=90,
              horizontalalignment="center", verticalalignment="center")
-    ax1.text(0.02, -0.04, "Z-arvo", transform=ax1_ylabel_transform, fontsize=7, horizontalalignment="left", verticalalignment="top")
+    ax1.text(0.02, -0.04, T(fi="Z-arvo", en="Z-value"), 
+             transform=ax1_ylabel_transform, fontsize=7, horizontalalignment="left", verticalalignment="top")
     fig.subplots_adjust(left=0.16, right=0.82, top=0.98, bottom=0.1)
     ax1.legend(handles=year_scatters, loc='upper left', ncol=1, bbox_to_anchor=(1.04, 1), fontsize=8,
                handletextpad=0.4, handlelength=0.5, borderpad=0.5, labelspacing=0.3, 
                frameon=True, fancybox=False, shadow=False, facecolor="white", framealpha=1.0, edgecolor="0.5",
                borderaxespad=0)
-    save_fig(fig, "figures/euromomo_correlation")
+    save_fig(fig, get_figure_filename("euromomo_correlation"))
     plt.close(fig)
 
 def plot_processcontrol_deaths_by_halfyears(deaths_and_population_by_month):
@@ -2515,13 +2565,13 @@ def plot_processcontrol_deaths_by_halfyears(deaths_and_population_by_month):
 
     fig1, ax1 = plt.subplots(1, 1, figsize=(COLUMN_WIDTH_IN, 1.1))
     ax1.set_ylim(0.46, 0.54)
-    fig1.autofmt_xdate(rotation=45, ha="right", which="both")
     #ax1.set_ylabel("Toisen vuosipuoliskon kuolemien osuus")
     #ax1.set_xlim(min(deaths_by_halfyears_x_date_list)-datetime.timedelta(days=800), 
     #             max(deaths_by_halfyears_x_date_list)+datetime.timedelta(days=5000))
     ax1.set_xlim(min(deaths_by_halfyears_x_date_list)-datetime.timedelta(days=400), 
                  max(deaths_by_halfyears_x_date_list)+datetime.timedelta(days=2500))
     ax1.xaxis.set_major_locator(matplotlib.dates.YearLocator(5))
+    ax1.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%Y"))
     for label in ax1.get_xticklabels():
         label.set_horizontalalignment('center')
     ax1.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(0.02))
@@ -2577,7 +2627,7 @@ def plot_processcontrol_deaths_by_halfyears(deaths_and_population_by_month):
              ("%.1f" % (100*(dbhy_average-2*dbhy_stddev),)).replace(".", ",") + r" $(-2\sigma)$", 
              transform=yline_transform, fontsize=6, color="red",
              horizontalalignment="left", verticalalignment="center", bbox=bbox)
-    filename = "figures/process_control_deaths_by_halfyears"
+    filename = get_figure_filename("process_control_deaths_by_halfyears")
     save_fig(fig1, filename)
     plt.close(fig1)
 
@@ -2676,9 +2726,9 @@ def plot_population_normalization(country_both_life_expectancy_fn, country_male_
     # plt.ylim(-1200, 3150)
     # ax.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(500))
     # plt.xlim(min(population_normalization_x_date) - datetime.timedelta(days=160), max(population_normalization_x_date) + datetime.timedelta(days=int(1.3*365)))
-    fig.autofmt_xdate(rotation=45, ha="right", which="both")
     plt.grid(True)
     ax.xaxis.set_major_locator(matplotlib.dates.YearLocator())
+    ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%Y"))
     ax.tick_params(axis="x", pad=0.5, labelsize=7, labelrotation=60)
     for label in ax.get_xticklabels():
         label.set_horizontalalignment('center')
@@ -2700,7 +2750,7 @@ def plot_population_normalization(country_both_life_expectancy_fn, country_male_
         ax.plot(normalization_x_date, female_life_expectancy_y, color="C2", linewidth=0.5, linestyle="-")
         ax.scatter(normalization_x_date, female_life_expectancy_y, color="black", s=3.0)
     fig.subplots_adjust(bottom=0.12, top=0.99, left=0.05, right=0.99)
-    save_fig(fig, "figures/population_normalization")
+    save_fig(fig, get_figure_filename("population_normalization"))
     plt.close(fig)
 
 def print_top_acm_table(all_cause_mortality):
@@ -2754,8 +2804,6 @@ def main():
                                        [66.4,   68.19,  69.07,  69.72,  70.94,  72.72,  74.33,  74.79,  75.84,  77.14,  78.4,   79.54,  80.7,   81.64,  82.48],  # Both sexes
                                        [63.02,  64.76,  65.44,  65.82,  66.63,  68.26,  70.04,  70.65,  71.94,  73.43,  74.93,  76.12,  77.67,  78.75,  79.82],  # Males
                                        [69.59,  71.43,  72.55,  73.50,  75.15,  77.04,  78.39,  78.75,  79.58,  80.70,  81.74,  82.91,  83.67,  84.52,  85.14])) # Females
-    os.makedirs("figures", exist_ok=True)
-    os.makedirs("figures/EuroMoMo", exist_ok=True)
     os.makedirs("data_output", exist_ok=True)
 
     if True:
@@ -2777,50 +2825,56 @@ def main():
     (finland_both_life_expectancy_fn, 
      finland_male_life_expectancy_fn, 
      finland_female_life_expectancy_fn) = calculate_life_expectancy_fn(finland_life_expectancy)
-    finland_deaths_and_population_by_month_extended = combine_deaths_by_month(finland_deaths_by_month_since_1945, finland_deaths_and_population_by_month, min_year=1990)
+    finland_deaths_and_population_by_month_extended = combine_deaths_by_month(finland_deaths_by_month_since_1945, finland_deaths_and_population_by_month, min_year=1990, max_year=2019)
     print("Year\tEstimated yearly mortality")
     for year in range(1990, 2025+1):
         print("%d\t%d" % (year, round(get_model_yearly_mortality(baseline_fn, year))))
-    plot_population_forecast_vs_model(finland_population_forecast, baseline_fn)
-    plot_monthly_deaths_per_100k(finland_deaths_and_population_by_month, finland_covid_data)
-    plot_weekly_deaths_per_age_per_1M(finland_population_by_year_and_age, finland_acm_by_category)
-    plot_raw_acm(acm_raw_x, acm_raw_x_date, acm_raw_y, auto_limits)
-    plot_acm_baseline_trend(acm_raw_x, acm_raw_x_date, acm_raw_y,
+    for lang in ("fi", "en"):
+        global LANG
+        LANG = lang
+        
+        os.makedirs(get_figure_filename("").rstrip("/"), exist_ok=True)
+        os.makedirs(get_figure_filename("EuroMoMo"), exist_ok=True)
+        plot_population_forecast_vs_model(finland_population_forecast, baseline_fn)
+        plot_monthly_deaths_per_100k(finland_deaths_and_population_by_month, finland_covid_data)
+        plot_weekly_deaths_per_age_per_1M(finland_population_by_year_and_age, finland_acm_by_category)
+        plot_raw_acm(acm_raw_x, acm_raw_x_date, acm_raw_y, auto_limits)
+        plot_acm_baseline_trend(acm_raw_x, acm_raw_x_date, acm_raw_y,
+                                 acm_averaged_x_date, acm_averaged_x_date, acm_averaged_y,
+                                 baseline_average_x, baseline_average_x_date, baseline_average_y,
+                                 acm_estimate_x, acm_estimate_x_date, acm_estimate_y,
+                                 baseline_trend_fn, auto_limits)
+        plot_acm_baseline_fn(acm_raw_x, acm_raw_x_date, acm_raw_y,
                              acm_averaged_x_date, acm_averaged_x_date, acm_averaged_y,
                              baseline_average_x, baseline_average_x_date, baseline_average_y,
                              acm_estimate_x, acm_estimate_x_date, acm_estimate_y,
-                             baseline_trend_fn, auto_limits)
-    plot_acm_baseline_fn(acm_raw_x, acm_raw_x_date, acm_raw_y,
-                         acm_averaged_x_date, acm_averaged_x_date, acm_averaged_y,
-                         baseline_average_x, baseline_average_x_date, baseline_average_y,
-                         acm_estimate_x, acm_estimate_x_date, acm_estimate_y,
-                         baseline_fn, auto_limits)
-    plot_acm_baseline_trend_and_fn(acm_raw_x, acm_raw_x_date, acm_raw_y,
-                                   acm_averaged_x_date, acm_averaged_x_date, acm_averaged_y,
-                                   baseline_average_x, baseline_average_x_date, baseline_average_y,
-                                   acm_estimate_x, acm_estimate_x_date, acm_estimate_y,
-                                   baseline_trend_fn, baseline_fn, auto_limits)
-    plot_combined_baseline_subplots(acm_raw_x, acm_raw_x_date, acm_raw_y,
-                                    acm_averaged_x_date, acm_averaged_x_date, acm_averaged_y,
-                                    baseline_average_x, baseline_average_x_date, baseline_average_y,
-                                    acm_estimate_x, acm_estimate_x_date, acm_estimate_y,
-                                    baseline_trend_fn, baseline_fn, auto_limits)
-    plot_excess_mortality(excess_mortality_x, excess_mortality_x_date, excess_mortality_y)
-    # yearly cumulative mortality from newyear
-    plot_yearly_cumulative_mortality(target_acm, baseline_fn, finland_covid_data, start_week=1)
-    # yearly cumulative mortality from spring
-    plot_yearly_cumulative_mortality(target_acm, baseline_fn, finland_covid_data, start_week=16)
-    plot_all_time_cumulative_excess_mortality(target_acm, baseline_fn)
-    plot_covid_cases_and_deaths(finland_covid_data)
-    plot_euromomo_zscores(finland_euromomo_data,
-                          "figures/euromomo_zscores",
-                          "figures/euromomo_zscores_cumulative",
-                          "figures/euromomo_zscores_combined")
-    plot_highlighted_euromomo_zscores(finland_euromomo_data)
-    plot_euromomo_vs_model_cumulative(excess_mortality_x, excess_mortality_x_date, excess_mortality_y, finland_euromomo_data)
-    plot_euromomo_correlation(excess_mortality_x, excess_mortality_x_date, excess_mortality_y, finland_euromomo_data)
-    plot_processcontrol_deaths_by_halfyears(finland_deaths_and_population_by_month_extended)
-    #plot_population_normalization(finland_both_life_expectancy_fn, finland_male_life_expectancy_fn, finland_female_life_expectancy_fn, finland_population_by_year_and_age, baseline_trend_fn)
+                             baseline_fn, auto_limits)
+        plot_acm_baseline_trend_and_fn(acm_raw_x, acm_raw_x_date, acm_raw_y,
+                                       acm_averaged_x_date, acm_averaged_x_date, acm_averaged_y,
+                                       baseline_average_x, baseline_average_x_date, baseline_average_y,
+                                       acm_estimate_x, acm_estimate_x_date, acm_estimate_y,
+                                       baseline_trend_fn, baseline_fn, auto_limits)
+        plot_combined_baseline_subplots(acm_raw_x, acm_raw_x_date, acm_raw_y,
+                                        acm_averaged_x_date, acm_averaged_x_date, acm_averaged_y,
+                                        baseline_average_x, baseline_average_x_date, baseline_average_y,
+                                        acm_estimate_x, acm_estimate_x_date, acm_estimate_y,
+                                        baseline_trend_fn, baseline_fn, auto_limits)
+        plot_excess_mortality(excess_mortality_x, excess_mortality_x_date, excess_mortality_y)
+        # yearly cumulative mortality from newyear
+        plot_yearly_cumulative_mortality(target_acm, baseline_fn, finland_covid_data, start_week=1)
+        # yearly cumulative mortality from spring
+        plot_yearly_cumulative_mortality(target_acm, baseline_fn, finland_covid_data, start_week=16)
+        plot_all_time_cumulative_excess_mortality(target_acm, baseline_fn)
+        plot_covid_cases_and_deaths(finland_covid_data)
+        plot_euromomo_zscores(finland_euromomo_data,
+                              get_figure_filename("euromomo_zscores"),
+                              get_figure_filename("euromomo_zscores_cumulative"),
+                              get_figure_filename("euromomo_zscores_combined"))
+        plot_highlighted_euromomo_zscores(finland_euromomo_data)
+        plot_euromomo_vs_model_cumulative(excess_mortality_x, excess_mortality_x_date, excess_mortality_y, finland_euromomo_data)
+        plot_euromomo_correlation(excess_mortality_x, excess_mortality_x_date, excess_mortality_y, finland_euromomo_data)
+        plot_processcontrol_deaths_by_halfyears(finland_deaths_and_population_by_month_extended)
+        #plot_population_normalization(finland_both_life_expectancy_fn, finland_male_life_expectancy_fn, finland_female_life_expectancy_fn, finland_population_by_year_and_age, baseline_trend_fn)
 
     sys.exit(0)
 
@@ -2830,9 +2884,9 @@ def main():
     for country in sorted(all_euromomo_countries):
         country_euromomo_data = [(d, item[country]) for d, item in euromomo_data if item.get(country)]
         plot_euromomo_zscores(country_euromomo_data, 
-                              "figures/EuroMoMo/%s zscores" % (country,), 
-                              "figures/EuroMoMo/%s zscores cumulative" % (country,),
-                              "figures/EuroMoMo/%s zscores combined" % (country,))
+                              get_figure_filename("EuroMoMo/%s zscores" % (country,)), 
+                              get_figure_filename("EuroMoMo/%s zscores cumulative" % (country,)),
+                              get_figure_filename("EuroMoMo/%s zscores combined" % (country,)))
     
 if __name__ == "__main__":
     init_latex()
