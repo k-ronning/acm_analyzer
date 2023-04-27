@@ -5,6 +5,7 @@ import isoweek
 import datetime
 import math
 import re
+import locale
 import numpy
 import scipy.optimize
 import scipy.interpolate
@@ -1511,13 +1512,13 @@ def plot_acm_baseline_trend(acm_raw_x, acm_raw_x_date, acm_raw_y,
     ax.scatter(baseline_average_x_date, baseline_average_y, color="C1", s=10.0, zorder=4)
     ax.scatter(baseline_average_x_date, baseline_average_y, color="white", s=4.0, zorder=5)
     for index, (x, y) in enumerate(zip(baseline_average_x_date, baseline_average_y)):
-        label = ("$p_{%d}$=%.1f" % (index+1, y)).replace(".", ",")
+        label = locale.format_string("$p_{%d}$=%.1f", (index+1, y))
         ax.annotate(label, xy=(x + datetime.timedelta(days=(index-3) * 80), y-130-3*abs(index-4)), textcoords='data', fontsize=7, horizontalalignment="center", fontweight="semibold")
     if acm_estimate_x_date is not None and acm_estimate_y is not None:
         ax.scatter(acm_estimate_x_date[1:], acm_estimate_y[1:], color="black", s=10.0, zorder=4)
         ax.scatter(acm_estimate_x_date[1:], acm_estimate_y[1:], color="#aaaaaa", s=4.0, zorder=5)
         for index, (x, y) in enumerate(zip(acm_estimate_x_date[1:], acm_estimate_y[1:])):
-            label = ("$p_{v%s}$=%.1f" % (index+1, y,)).replace(".", ",")
+            label = locale.format_string("$p_{v%s}$=%.1f", (index+1, y,))
             ax.annotate(label, xy=(x, y-110), textcoords='data', fontsize=7, horizontalalignment="center", fontweight="semibold")
     #plt.xticks(rotation=45)
     plt.grid(True)
@@ -1613,14 +1614,14 @@ def plot_acm_baseline_trend_and_fn(acm_raw_x, acm_raw_x_date, acm_raw_y,
                 "shrinkB": 0.25,
             }
         for index, (x, y) in enumerate(zip(baseline_average_x_date, baseline_average_y)):
-            label = ("$p_{%d}$=%.1f" % (index+1, y)).replace(".", ",")
+            label = locale.format_string("$p_{%d}$=%.1f", (index+1, y))
             ax.annotate(label, xy=(x, y), xytext=(x + datetime.timedelta(days=70), y-180), 
                         textcoords='data', fontsize=6, horizontalalignment="left", arrowprops=arrowprops)
         if acm_estimate_x_date is not None and acm_estimate_y is not None:
             ax.scatter(acm_estimate_x_date[1:], acm_estimate_y[1:], color="black", s=10.0, zorder=4)
             ax.scatter(acm_estimate_x_date[1:], acm_estimate_y[1:], color="#aaaaaa", s=4.0, zorder=5)
             for index, (x, y) in enumerate(zip(acm_estimate_x_date[1:], acm_estimate_y[1:])):
-                label = ("$p_{v%d}$=%.1f" % (index+1, y,)).replace(".", ",")
+                label = locale.format_string("$p_{v%d}$=%.1f", (index+1, y,))
                 ax.annotate(label, xy=(x, y), xytext=(x+datetime.timedelta(days=50), y-180), textcoords='data', fontsize=6, horizontalalignment="left", arrowprops=arrowprops)
     #plt.xticks(rotation=45)
     plt.grid(True)
@@ -1683,14 +1684,14 @@ def plot_combined_baseline_subplots(acm_raw_x, acm_raw_x_date, acm_raw_y,
     ax1.scatter(baseline_average_x_date, baseline_average_y, color="C1", s=10.0, zorder=4)
     ax1.scatter(baseline_average_x_date, baseline_average_y, color="white", s=4.0, zorder=5)
     for index, (x, y) in enumerate(zip(baseline_average_x_date, baseline_average_y)):
-        label = ("$p_{%d}$=%.1f" % (index+1, y)).replace(".", ",")
+        label = locale.format_string("$p_{%d}$=%.1f", (index+1, y))
         ax1.annotate(label, xy=(x + datetime.timedelta(days=(index-3) * 80), y-145), 
                      textcoords='data', fontsize=7, horizontalalignment="center")
     if acm_estimate_x_date is not None and acm_estimate_y is not None:
         ax1.scatter(acm_estimate_x_date[1:], acm_estimate_y[1:], color="black", s=10.0, zorder=4)
         ax1.scatter(acm_estimate_x_date[1:], acm_estimate_y[1:], color="#aaaaaa", s=4.0, zorder=5)
         for x, y in zip(acm_estimate_x_date[1:], acm_estimate_y[1:]):
-            label = ("$p_{ve}$=%.1f" % (y,)).replace(".", ",")
+            label = locale.format_string("$p_{ve}$=%.1f", (y,))
             ax1.annotate(label, xy=(x, y-110), textcoords='data', fontsize=7, horizontalalignment="center", fontweight="semibold")
     #ax1.xticks(rotation=45)
     ax1.grid(True)
@@ -2588,7 +2589,7 @@ def plot_processcontrol_deaths_by_halfyears(deaths_and_population_by_month):
     fig1.subplots_adjust(bottom=0.10, top=0.965, left=0.075, right=0.99)
 
     for px, py in [(deaths_by_halfyears_x_date[-1], deaths_by_halfyears_y[-1])]:
-        p_text = (r"%s: %.1f%% $(%+.1f\sigma)$" % (px.year, 100*py, (py - dbhy_average) / dbhy_stddev)).replace(".", ",")
+        p_text = locale.format_string(r"%s: %.1f%% $(%+.1f\sigma)$", (px.year, 100*py, (py - dbhy_average) / dbhy_stddev))
         p_transform = matplotlib.transforms.offset_copy(ax1.transData, fig=fig1, x=0, y=2.5, units="points")
         bbox = {
             "boxstyle": "round",
@@ -2616,15 +2617,15 @@ def plot_processcontrol_deaths_by_halfyears(deaths_and_population_by_month):
     }
     xoffs = 0
     ax1.text(stat_label_xpos+xoffs, dbhy_average, 
-             ("%.1f" % (100*dbhy_average,)).replace(".", ",") + r" $(\bar x)$",
+             locale.format_string("%.1f", (100*dbhy_average,)) + r" $(\bar x)$",
              transform=yline_transform, fontsize=6, color="red",
              horizontalalignment="left", verticalalignment="center", bbox=bbox)
     ax1.text(stat_label_xpos+xoffs, dbhy_average+2*dbhy_stddev, 
-             ("%.1f" % (100*(dbhy_average+2*dbhy_stddev),)).replace(".", ",") + r" $(+2\sigma)$", 
+             locale.format_string("%.1f", (100*(dbhy_average+2*dbhy_stddev),)) + r" $(+2\sigma)$", 
              transform=yline_transform, fontsize=6, color="red",
              horizontalalignment="left", verticalalignment="center", bbox=bbox)
     ax1.text(stat_label_xpos+xoffs, dbhy_average-2*dbhy_stddev, 
-             ("%.1f" % (100*(dbhy_average-2*dbhy_stddev),)).replace(".", ",") + r" $(-2\sigma)$", 
+             locale.format_string("%.1f", (100*(dbhy_average-2*dbhy_stddev),)) + r" $(-2\sigma)$", 
              transform=yline_transform, fontsize=6, color="red",
              horizontalalignment="left", verticalalignment="center", bbox=bbox)
     filename = get_figure_filename("process_control_deaths_by_halfyears")
@@ -2832,6 +2833,12 @@ def main():
     for lang in ("fi", "en"):
         global LANG
         LANG = lang
+        if lang == "fi":
+            locale.setlocale(locale.LC_ALL, 'fi_FI.utf8')
+        elif lang == "en":
+            locale.setlocale(locale.LC_ALL, 'en_US.utf8')
+        else:
+            raise ValueError(f"Unknown language: {lang}")
         
         os.makedirs(get_figure_filename("").rstrip("/"), exist_ok=True)
         os.makedirs(get_figure_filename("EuroMoMo"), exist_ok=True)
