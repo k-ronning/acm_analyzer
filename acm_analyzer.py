@@ -2523,24 +2523,27 @@ def plot_processcontrol_deaths_by_halfyears(deaths_and_population_by_month):
     current_h1_counter = None
     current_h2_sum = None
     current_h2_counter = None
+    def _add_datapoint():
+        assert current_h1_sum is not None and current_h2_sum is not None
+        assert current_h1_sum > 0 and current_h2_sum > 0
+        assert current_h1_counter == 6, "Invalid h1 counter: %s" % (current_h1_counter,)
+        assert current_h2_counter == 6, "Invalid h2 counter: %s" % (current_h2_counter,)
+        data_date = datetime.date(current_year, 1, 1)
+        data_x = (data_date - T0_DATE).days
+        data_y = current_h2_sum / (current_h1_sum + current_h2_sum)
+        deaths_by_halfyears_x_list.append(data_x)
+        deaths_by_halfyears_x_date_list.append(data_date)
+        deaths_by_halfyears_y_list.append(data_y)
+        if data_date < T0_DATE:
+            dbhy_statistics_y.append(data_y)
+    month = None
     for month_item in deaths_and_population_by_month:
         year = month_item["year"]
         month = month_item["month"]
         deaths = month_item["deaths"]
         if month == 1:
             if current_year is not None:
-                assert current_h1_sum is not None and current_h2_sum is not None
-                assert current_h1_sum > 0 and current_h2_sum > 0
-                assert current_h1_counter == 6, "Invalid h1 counter: %s" % (current_h1_counter,)
-                assert current_h2_counter == 6, "Invalid h2 counter: %s" % (current_h2_counter,)
-                data_date = datetime.date(current_year, 1, 1)
-                data_x = (data_date - T0_DATE).days
-                data_y = current_h2_sum / (current_h1_sum + current_h2_sum)
-                deaths_by_halfyears_x_list.append(data_x)
-                deaths_by_halfyears_x_date_list.append(data_date)
-                deaths_by_halfyears_y_list.append(data_y)
-                if data_date < T0_DATE:
-                    dbhy_statistics_y.append(data_y)
+                _add_datapoint()
             current_year = year
             current_h1_sum = 0
             current_h1_counter = 0
@@ -2558,6 +2561,8 @@ def plot_processcontrol_deaths_by_halfyears(deaths_and_population_by_month):
             if current_h2_sum is not None:
                 current_h2_sum += deaths
                 current_h2_counter += 1
+    if current_year is not None and month == 12:
+        _add_datapoint()
     deaths_by_halfyears_x = numpy.array(deaths_by_halfyears_x_list)
     deaths_by_halfyears_x_date = numpy.array(deaths_by_halfyears_x_date_list)
     deaths_by_halfyears_y = numpy.array(deaths_by_halfyears_y_list)
